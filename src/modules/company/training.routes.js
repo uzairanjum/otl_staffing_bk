@@ -10,7 +10,7 @@ const { validate, schemas } = require('../../common/middleware/validation.middle
  *   get:
  *     summary: List trainings
  *     description: Get all training programs
- *     tags: [Training]
+ *     tags: [Company Training]
  *     security:
  *       - bearerAuth: []
  *     responses:
@@ -24,7 +24,7 @@ const { validate, schemas } = require('../../common/middleware/validation.middle
  *   post:
  *     summary: Create training
  *     description: Create a new training program
- *     tags: [Training]
+ *     tags: [Company Training]
  *     security:
  *       - bearerAuth: []
  *     requestBody:
@@ -55,7 +55,7 @@ router.post('/', validate(schemas.training), trainingController.createTraining);
  *   put:
  *     summary: Update training
  *     description: Update a training program
- *     tags: [Training]
+ *     tags: [Company Training]
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -81,7 +81,7 @@ router.post('/', validate(schemas.training), trainingController.createTraining);
  *   delete:
  *     summary: Delete training
  *     description: Delete a training program
- *     tags: [Training]
+ *     tags: [Company Training]
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -107,7 +107,7 @@ router.delete('/:id', trainingController.deleteTraining);
  *   post:
  *     summary: Assign training to worker
  *     description: Assign a training program to a worker
- *     tags: [Training]
+ *     tags: [Company Training]
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -132,7 +132,7 @@ router.delete('/:id', trainingController.deleteTraining);
  *   put:
  *     summary: Update worker training status
  *     description: Update worker's training completion status
- *     tags: [Training]
+ *     tags: [Company Training]
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -173,7 +173,7 @@ router.put('/:id/assign/:workerId', trainingController.updateWorkerTrainingStatu
  *   post:
  *     summary: Upload training document
  *     description: Upload training completion documents for a worker
- *     tags: [Training]
+ *     tags: [Company Training]
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -213,7 +213,7 @@ router.post('/:id/assign/:workerId/documents', trainingController.uploadTraining
  *   get:
  *     summary: Get worker trainings
  *     description: Get all training assigned to a worker
- *     tags: [Training]
+ *     tags: [Company Training]
  *     security:
  *       - bearerAuth: []
  *     parameters:

@@ -720,8 +720,16 @@ const swaggerOptions = {
         description: 'Company management endpoints'
       },
       {
+        name: 'Company Training',
+        description: 'Company training management endpoints'
+      },
+      {
         name: 'Workers',
         description: 'Worker management endpoints (Admin)'
+      },
+      {
+        name: 'Worker Training',
+        description: 'Worker training endpoints'
       },
       {
         name: 'Onboarding',
@@ -738,10 +746,6 @@ const swaggerOptions = {
       {
         name: 'Worker Shifts',
         description: 'Worker-facing shift endpoints'
-      },
-      {
-        name: 'Training',
-        description: 'Training management endpoints'
       },
       {
         name: 'Clients',
