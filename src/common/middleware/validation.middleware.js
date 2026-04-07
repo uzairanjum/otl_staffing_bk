@@ -132,6 +132,19 @@ const schemas = {
     name: Joi.string().required(),
     category: Joi.string(),
     description: Joi.string()
+  }),
+
+  onboardingStep3: Joi.object({
+    contact_name: Joi.string(),
+    relationship: Joi.string(),
+    phone: Joi.string(),
+    email: Joi.string().email(),
+    address_line1: Joi.string(),
+    address_line2: Joi.string(),
+    city: Joi.string(),
+    state: Joi.string(),
+    postal_code: Joi.string(),
+    country: Joi.string()
   })
 };
 

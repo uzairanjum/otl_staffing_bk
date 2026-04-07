@@ -27,8 +27,8 @@ const workerSchema = new mongoose.Schema({
   },
   onboarding_step: {
     type: Number,
-    min: 1,
-    max: 6,
+    min: 0,
+    max: 7,
     default: 0
   },
   contract_signed: {

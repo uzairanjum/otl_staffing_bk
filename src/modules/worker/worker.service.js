@@ -6,6 +6,7 @@ const WorkerBankDetail = require('./WorkerBankDetail');
 const WorkerRole = require('./WorkerRole');
 const WorkerWorkingHours = require('./WorkerWorkingHours');
 const WorkerFile = require('./WorkerFile');
+const WorkerEmergencyContact = require('./WorkerEmergencyContact');
 const TimeOffRequest = require('./TimeOffRequest');
 const { AppError } = require('../../common/middleware/error.middleware');
 const { sendEmailWithTemplate } = require('../../config/email');
@@ -78,13 +79,14 @@ class WorkerService {
       throw new AppError('Worker not found', 404);
     }
 
-    const [address, taxInfo, bankDetail, workingHours, files, timeOffs] = await Promise.all([
+    const [address, taxInfo, bankDetail, workingHours, files, timeOffs, emergencyContact] = await Promise.all([
       WorkerAddress.findOne({ worker_id: workerId }),
       WorkerTaxInfo.findOne({ worker_id: workerId }),
       WorkerBankDetail.findOne({ worker_id: workerId }),
       WorkerWorkingHours.find({ worker_id: workerId }),
       WorkerFile.find({ worker_id: workerId }),
-      TimeOffRequest.find({ worker_id: workerId, status: 'active' })
+      TimeOffRequest.find({ worker_id: workerId, status: 'active' }),
+      WorkerEmergencyContact.findOne({ worker_id: workerId })
     ]);
 
     return {
@@ -92,6 +94,7 @@ class WorkerService {
       address,
       tax_info: taxInfo,
       bank_detail: bankDetail,
+      emergency_contact: emergencyContact,
       working_hours: workingHours,
       files,
       time_offs: timeOffs
@@ -257,6 +260,13 @@ class WorkerService {
         }
         break;
       case 3:
+        await WorkerEmergencyContact.findOneAndUpdate(
+          { worker_id: workerId },
+          { worker_id: workerId, ...data },
+          { upsert: true }
+        );
+        break;
+      case 4:
         if (data.company_role_id) {
           await WorkerRole.findOneAndUpdate(
             { worker_id: workerId },
@@ -265,7 +275,7 @@ class WorkerService {
           );
         }
         break;
-      case 4:
+      case 5:
         if (data.availability && data.availability.length > 0) {
           await WorkerWorkingHours.deleteMany({ worker_id: workerId });
           await WorkerWorkingHours.create(
@@ -278,15 +288,15 @@ class WorkerService {
           );
         }
         break;
-      case 5:
-        break;
       case 6:
+        break;
+      case 7:
         break;
       default:
         throw new AppError('Invalid step', 400);
     }
 
-    if (step < 6) {
+    if (step < 7) {
       worker.onboarding_step = step + 1;
     } else {
       worker.status = 'pending_approval';

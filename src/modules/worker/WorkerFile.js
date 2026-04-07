@@ -8,7 +8,21 @@ const workerFileSchema = new mongoose.Schema({
   },
   file_type: {
     type: String,
-    enum: ['nic', 'driver_license', 'insurance', 'other'],
+    enum: [
+      'nic',
+      'driver_license',
+      'insurance',
+      'other',
+      'proof_of_address',
+      'ni_utr',
+      'driving_license_front',
+      'driving_license_back',
+      'passport_front',
+      'passport_inner',
+      'passport_back',
+      'profile_photo',
+      'dvla_check'
+    ],
     required: true
   },
   file_url: {
