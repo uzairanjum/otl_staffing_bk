@@ -1,13 +1,11 @@
 require('dotenv').config();
+
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const cookieParser = require('cookie-parser');
-const swaggerJsdoc = require('swagger-jsdoc');
-const swaggerUI = require('swagger-ui-express');
 const connectDB = require('./config/database');
 const config = require('./config');
-const swaggerOptions = require('./config/swagger');
 const { errorMiddleware, notFoundMiddleware } = require('./common/middleware/error.middleware');
 
 const authRoutes = require('./modules/auth/auth.routes');
@@ -34,18 +32,6 @@ app.use(cors({
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
-
-const swaggerSpec = swaggerJsdoc(swaggerOptions);
-
-app.get('/api-docs.json', (req, res) => {
-  res.json(swaggerSpec);
-});
-
-app.use('/api-docs', swaggerUI.serve, swaggerUI.setup(swaggerSpec, {
-  customCss: '.swagger-ui .topbar { display: none }',
-  customSiteTitle: 'OTL Staffing API',
-  customfavIcon: '/favicon.ico'
-}));
 
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });

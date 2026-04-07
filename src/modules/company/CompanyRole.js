@@ -10,6 +10,11 @@ const companyRoleSchema = new mongoose.Schema({
     type: String,
     required: true
   },
+  role_category_id: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'RoleCategory',
+    required: true
+  },
   category: {
     type: String
   },

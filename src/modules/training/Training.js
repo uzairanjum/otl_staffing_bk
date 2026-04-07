@@ -10,6 +10,11 @@ const trainingSchema = new mongoose.Schema({
     type: String,
     required: true
   },
+  training_category_id: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'TrainingCategory',
+    required: true
+  },
   category: {
     type: String
   },

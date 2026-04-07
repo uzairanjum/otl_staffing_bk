@@ -1,6 +1,8 @@
 const Company = require('./Company');
 const CompanyRole = require('./CompanyRole');
 const CompanyWorkingHours = require('./CompanyWorkingHours');
+const RoleCategory = require('./RoleCategory');
+const TrainingCategory = require('./TrainingCategory');
 const { AppError } = require('../../common/middleware/error.middleware');
 const { v4: uuidv4 } = require('uuid');
 
@@ -77,6 +79,98 @@ class CompanyService {
       }))
     );
     return hours;
+  }
+
+  async getRoleCategories(companyId) {
+    return RoleCategory.find({ company_id: companyId });
+  }
+
+  async createRoleCategory(companyId, data) {
+    const category = await RoleCategory.create({
+      ...data,
+      company_id: companyId
+    });
+    return category;
+  }
+
+  async updateRoleCategory(categoryId, companyId, data) {
+    const category = await RoleCategory.findOneAndUpdate(
+      { _id: categoryId, company_id: companyId },
+      data,
+      { new: true, runValidators: true }
+    );
+    if (!category) {
+      throw new AppError('Role category not found', 404);
+    }
+    return category;
+  }
+
+  async deleteRoleCategory(categoryId, companyId) {
+    const linkedRoles = await CompanyRole.countDocuments({
+      role_category_id: categoryId,
+      company_id: companyId,
+      is_active: true
+    });
+
+    if (linkedRoles > 0) {
+      throw new AppError('Cannot delete category - roles are linked to it', 400);
+    }
+
+    const category = await RoleCategory.findOneAndDelete({
+      _id: categoryId,
+      company_id: companyId
+    });
+    if (!category) {
+      throw new AppError('Role category not found', 404);
+    }
+    return category;
+  }
+
+  async getTrainingCategories(companyId) {
+    return TrainingCategory.find({ company_id: companyId });
+  }
+
+  async createTrainingCategory(companyId, data) {
+    const category = await TrainingCategory.create({
+      ...data,
+      company_id: companyId
+    });
+    return category;
+  }
+
+  async updateTrainingCategory(categoryId, companyId, data) {
+    const category = await TrainingCategory.findOneAndUpdate(
+      { _id: categoryId, company_id: companyId },
+      data,
+      { new: true, runValidators: true }
+    );
+    if (!category) {
+      throw new AppError('Training category not found', 404);
+    }
+    return category;
+  }
+
+  async deleteTrainingCategory(categoryId, companyId) {
+    const Training = require('../training/Training');
+    
+    const linkedTraining = await Training.countDocuments({
+      training_category_id: categoryId,
+      company_id: companyId,
+      is_active: true
+    });
+
+    if (linkedTraining > 0) {
+      throw new AppError('Cannot delete category - training is linked to it', 400);
+    }
+
+    const category = await TrainingCategory.findOneAndDelete({
+      _id: categoryId,
+      company_id: companyId
+    });
+    if (!category) {
+      throw new AppError('Training category not found', 404);
+    }
+    return category;
   }
 
   async getStats(companyId) {

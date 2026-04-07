@@ -31,6 +31,10 @@ const schemas = {
     newPassword: Joi.string().min(8).required()
   }),
 
+  forgotPassword: Joi.object({
+    email: Joi.string().email().required()
+  }),
+
   resetPassword: Joi.object({
     token: Joi.string().required(),
     newPassword: Joi.string().min(8).required()
@@ -53,9 +57,20 @@ const schemas = {
 
   companyRole: Joi.object({
     name: Joi.string().required(),
+    role_category_id: Joi.string().required(),
     category: Joi.string(),
     default_hourly_rate: Joi.number().min(0),
     description: Joi.string()
+  }),
+
+  roleCategory: Joi.object({
+    name: Joi.string().required(),
+    color: Joi.string().pattern(/^#[0-9A-F]{6}$/i).required()
+  }),
+
+  trainingCategory: Joi.object({
+    name: Joi.string().required(),
+    color: Joi.string().pattern(/^#[0-9A-F]{6}$/i).required()
   }),
 
   client: Joi.object({
@@ -130,6 +145,7 @@ const schemas = {
 
   training: Joi.object({
     name: Joi.string().required(),
+    training_category_id: Joi.string().required(),
     category: Joi.string(),
     description: Joi.string()
   }),

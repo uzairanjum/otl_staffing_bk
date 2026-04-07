@@ -82,6 +82,78 @@ class CompanyController {
       next(new AppError(error.message, error.statusCode || 500));
     }
   }
+
+  async getRoleCategories(req, res, next) {
+    try {
+      const categories = await companyService.getRoleCategories(req.company_id);
+      res.json(categories);
+    } catch (error) {
+      next(new AppError(error.message, error.statusCode || 500));
+    }
+  }
+
+  async createRoleCategory(req, res, next) {
+    try {
+      const category = await companyService.createRoleCategory(req.company_id, req.body);
+      res.status(201).json(category);
+    } catch (error) {
+      next(new AppError(error.message, error.statusCode || 500));
+    }
+  }
+
+  async updateRoleCategory(req, res, next) {
+    try {
+      const category = await companyService.updateRoleCategory(req.params.id, req.company_id, req.body);
+      res.json(category);
+    } catch (error) {
+      next(new AppError(error.message, error.statusCode || 500));
+    }
+  }
+
+  async deleteRoleCategory(req, res, next) {
+    try {
+      await companyService.deleteRoleCategory(req.params.id, req.company_id);
+      res.json({ message: 'Role category deleted successfully' });
+    } catch (error) {
+      next(new AppError(error.message, error.statusCode || 500));
+    }
+  }
+
+  async getTrainingCategories(req, res, next) {
+    try {
+      const categories = await companyService.getTrainingCategories(req.company_id);
+      res.json(categories);
+    } catch (error) {
+      next(new AppError(error.message, error.statusCode || 500));
+    }
+  }
+
+  async createTrainingCategory(req, res, next) {
+    try {
+      const category = await companyService.createTrainingCategory(req.company_id, req.body);
+      res.status(201).json(category);
+    } catch (error) {
+      next(new AppError(error.message, error.statusCode || 500));
+    }
+  }
+
+  async updateTrainingCategory(req, res, next) {
+    try {
+      const category = await companyService.updateTrainingCategory(req.params.id, req.company_id, req.body);
+      res.json(category);
+    } catch (error) {
+      next(new AppError(error.message, error.statusCode || 500));
+    }
+  }
+
+  async deleteTrainingCategory(req, res, next) {
+    try {
+      await companyService.deleteTrainingCategory(req.params.id, req.company_id);
+      res.json({ message: 'Training category deleted successfully' });
+    } catch (error) {
+      next(new AppError(error.message, error.statusCode || 500));
+    }
+  }
 }
 
 module.exports = new CompanyController();
