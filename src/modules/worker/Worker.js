@@ -22,7 +22,7 @@ const workerSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ['invited', 'signed_contract', 'in_progress', 'pending_approval', 'active', 'suspended'],
+    enum: ['invited', 'signed_contract', 'in_progress', 'pending_approval', 'active', 'inactive'],
     default: 'invited'
   },
   onboarding_step: {
