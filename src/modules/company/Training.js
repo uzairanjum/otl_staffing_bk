@@ -15,8 +15,9 @@ const trainingSchema = new mongoose.Schema({
     ref: 'TrainingCategory',
     required: true
   },
-  category: {
-    type: String
+  document_required:{
+    type: Boolean,
+    default: false
   },
   description: {
     type: String

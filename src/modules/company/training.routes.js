@@ -6,7 +6,7 @@ const { validate, schemas } = require('../../common/middleware/validation.middle
 
 /**
  * @swagger
- * /api/training:
+ * /api/company/training:
  *   get:
  *     summary: List trainings
  *     description: Get all training programs
@@ -51,7 +51,7 @@ router.post('/', validate(schemas.training), trainingController.createTraining);
 
 /**
  * @swagger
- * /api/training/{id}:
+ * /api/company/training/{id}:
  *   put:
  *     summary: Update training
  *     description: Update a training program
@@ -103,7 +103,7 @@ router.delete('/:id', trainingController.deleteTraining);
 
 /**
  * @swagger
- * /api/training/{id}/assign/{workerId}:
+ * /api/company/training/{id}/assign/{workerId}:
  *   post:
  *     summary: Assign training to worker
  *     description: Assign a training program to a worker
@@ -169,7 +169,7 @@ router.put('/:id/assign/:workerId', trainingController.updateWorkerTrainingStatu
 
 /**
  * @swagger
- * /api/training/{id}/assign/{workerId}/documents:
+ * /api/company/training/{id}/assign/{workerId}/documents:
  *   post:
  *     summary: Upload training document
  *     description: Upload training completion documents for a worker
@@ -209,7 +209,7 @@ router.post('/:id/assign/:workerId/documents', trainingController.uploadTraining
 
 /**
  * @swagger
- * /api/training/worker/{workerId}:
+ * /api/company/training/worker/{workerId}:
  *   get:
  *     summary: Get worker trainings
  *     description: Get all training assigned to a worker

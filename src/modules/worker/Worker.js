@@ -22,13 +22,13 @@ const workerSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ['invited', 'onboarding', 'pending_approval', 'active', 'suspended'],
+    enum: ['invited', 'signed_contract', 'in_progress', 'pending_approval', 'active', 'suspended'],
     default: 'invited'
   },
   onboarding_step: {
     type: Number,
     min: 0,
-    max: 7,
+    max: 8,
     default: 0
   },
   contract_signed: {

@@ -15,9 +15,6 @@ const companyRoleSchema = new mongoose.Schema({
     ref: 'RoleCategory',
     required: true
   },
-  category: {
-    type: String
-  },
   default_hourly_rate: {
     type: Number,
     default: 0

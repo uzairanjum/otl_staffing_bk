@@ -1,6 +1,6 @@
 const Training = require('./Training');
-const WorkerTraining = require('./WorkerTraining');
-const WorkerTrainingDocument = require('./WorkerTrainingDocument');
+const WorkerTraining = require('../worker/WorkerTraining');
+const WorkerTrainingDocument = require('../worker/WorkerTrainingDocument');
 const { AppError } = require('../../common/middleware/error.middleware');
 
 class TrainingService {
