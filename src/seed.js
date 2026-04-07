@@ -34,22 +34,22 @@ const seedCompany = async () => {
     console.log('Admin user created:', adminUser.email);
     console.log('Temporary password:', adminPassword);
 
-    const CompanyRole = require('./modules/company/CompanyRole');
-    const roles = [
-      { name: 'General Staff', category: 'general', default_hourly_rate: 15 },
-      { name: 'Security', category: 'security', default_hourly_rate: 20 },
-      { name: 'Event Coordinator', category: 'event', default_hourly_rate: 25 },
-      { name: 'Catering Staff', category: 'catering', default_hourly_rate: 16 },
-      { name: 'Setup Crew', category: 'labor', default_hourly_rate: 18 }
-    ];
+    // const CompanyRole = require('./modules/company/CompanyRole');
+    // const roles = [
+    //   { name: 'General Staff', category: 'general', default_hourly_rate: 15 },
+    //   { name: 'Security', category: 'security', default_hourly_rate: 20 },
+    //   { name: 'Event Coordinator', category: 'event', default_hourly_rate: 25 },
+    //   { name: 'Catering Staff', category: 'catering', default_hourly_rate: 16 },
+    //   { name: 'Setup Crew', category: 'labor', default_hourly_rate: 18 }
+    // ];
 
-    for (const role of roles) {
-      await CompanyRole.create({
-        company_id: company._id,
-        ...role
-      });
-    }
-    console.log('Company roles created:', roles.length);
+    // for (const role of roles) {
+    //   await CompanyRole.create({
+    //     company_id: company._id,
+    //     ...role
+    //   });
+    // }
+    // console.log('Company roles created:', roles.length);
 
     const CompanyWorkingHours = require('./modules/company/CompanyWorkingHours');
     const defaultHours = [

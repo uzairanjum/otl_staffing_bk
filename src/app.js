@@ -4,9 +4,12 @@ const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const cookieParser = require('cookie-parser');
+const swaggerJsDoc = require('swagger-jsdoc');
+const swaggerUi = require('swagger-ui-express');
 const connectDB = require('./config/database');
 const config = require('./config');
 const { errorMiddleware, notFoundMiddleware } = require('./common/middleware/error.middleware');
+const swaggerOptions = require('../swagger.config');
 
 const authRoutes = require('./modules/auth/auth.routes');
 const companyRoutes = require('./modules/company/company.routes');
@@ -37,6 +40,19 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
+const specs = swaggerJsDoc(swaggerOptions);
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(specs, {
+  swaggerOptions: {
+    persistAuthorization: true,
+    showRequestDuration: true
+  },
+  customCss: `
+    .swagger-ui .topbar { display: none }
+    .swagger-ui .info .title { font-size: 2.5em }
+  `,
+  customSiteTitle: 'OTL Staffing Platform API'
+}));
+
 app.use('/api/auth', authRoutes);
 app.use('/api/company', companyRoutes);
 app.use('/api/workers', workerRoutes);
@@ -63,6 +79,7 @@ const startServer = async () => {
     app.listen(config.port, () => {
       console.log(`Server running on port ${config.port}`);
       console.log(`Environment: ${config.env}`);
+      console.log(`Swagger UI available at http://localhost:${config.port}/api-docs`);
     });
   } catch (error) {
     console.error('Failed to start server:', error);

@@ -4,6 +4,7 @@ const { AppError } = require('../../common/middleware/error.middleware');
 class CompanyController {
   async getCompany(req, res, next) {
     try {
+      console.log(req.company_id);
       const company = await companyService.getCompany(req.company_id);
       res.json(company);
     } catch (error) {
@@ -31,6 +32,8 @@ class CompanyController {
 
   async createRole(req, res, next) {
     try {
+      console.log(req.company_id);
+      console.log(req.body);
       const role = await companyService.createRole(req.company_id, req.body);
       res.status(201).json(role);
     } catch (error) {
@@ -94,6 +97,8 @@ class CompanyController {
 
   async createRoleCategory(req, res, next) {
     try {
+      console.log(req.company_id);
+      console.log(req.body);
       const category = await companyService.createRoleCategory(req.company_id, req.body);
       res.status(201).json(category);
     } catch (error) {
