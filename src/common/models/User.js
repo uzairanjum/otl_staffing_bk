@@ -7,6 +7,14 @@ const userSchema = new mongoose.Schema({
     ref: 'Company',
     required: true
   },
+  client_id: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Client'
+  },
+  name: {
+    type: String,
+    trim: true
+  },
   email: {
     type: String,
     required: true,
@@ -30,6 +38,21 @@ const userSchema = new mongoose.Schema({
   client_rep_id: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'ClientRepresentative'
+  },
+  phone: {
+    type: String
+  },
+  address: {
+    type: String
+  },
+  representativerole: {
+    type: String,
+    trim: true
+  },
+  status: {
+    type: String,
+    enum: ['active', 'inactive'],
+    default: 'active'
   },
   refresh_token: {
     type: String

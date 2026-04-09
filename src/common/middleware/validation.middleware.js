@@ -77,14 +77,81 @@ const schemas = {
     name: Joi.string().required(),
     email: Joi.string().email(),
     phone: Joi.string(),
-    address: Joi.string()
+    organization: Joi.string().allow(''),
+    address: Joi.string().allow(''),
+    notes: Joi.string().allow(''),
+    website: Joi.string().allow(''),
+    status: Joi.string().valid('active', 'inactive')
   }),
 
   clientRepresentative: Joi.object({
-    first_name: Joi.string().required(),
-    last_name: Joi.string().required(),
+    first_name: Joi.string(),
+    last_name: Joi.string(),
+    name: Joi.string(),
     email: Joi.string().email().required(),
-    phone: Joi.string()
+    phone: Joi.string().allow(''),
+    address: Joi.string().allow(''),
+    representativerole: Joi.string().allow('')
+  }),
+
+  clientWithDetails: Joi.object({
+    client: Joi.object({
+      name: Joi.string().required(),
+      email: Joi.string().email().allow(''),
+      phone: Joi.string().allow(''),
+      organization: Joi.string().allow(''),
+      address: Joi.string().allow(''),
+      notes: Joi.string().allow(''),
+      website: Joi.string().allow(''),
+      status: Joi.string().valid('active', 'inactive').default('active')
+    }).required(),
+    representatives: Joi.array().items(
+      Joi.object({
+        name: Joi.string().required(),
+        email: Joi.string().email().required(),
+        phone: Joi.string().allow(''),
+        address: Joi.string().allow(''),
+        representativerole: Joi.string().allow('')
+      })
+    ).min(1).required(),
+    jobs: Joi.array().items(
+      Joi.object({
+        name: Joi.string().required(),
+        description: Joi.string().allow(''),
+        status: Joi.string().valid('draft', 'active', 'completed', 'cancelled')
+      })
+    ).default([])
+  }),
+
+  clientWithDetailsUpdate: Joi.object({
+    client: Joi.object({
+      name: Joi.string().required(),
+      email: Joi.string().email().allow(''),
+      phone: Joi.string().allow(''),
+      organization: Joi.string().allow(''),
+      address: Joi.string().allow(''),
+      notes: Joi.string().allow(''),
+      website: Joi.string().allow(''),
+      status: Joi.string().valid('active', 'inactive').default('active')
+    }).required(),
+    representatives: Joi.array().items(
+      Joi.object({
+        id: Joi.string(),
+        name: Joi.string().required(),
+        email: Joi.string().email().required(),
+        phone: Joi.string().allow(''),
+        address: Joi.string().allow(''),
+        representativerole: Joi.string().allow('')
+      })
+    ).min(1).required(),
+    jobs: Joi.array().items(
+      Joi.object({
+        id: Joi.string(),
+        name: Joi.string().required(),
+        description: Joi.string().allow(''),
+        status: Joi.string().valid('draft', 'active', 'completed', 'cancelled')
+      })
+    ).default([])
   }),
 
   job: Joi.object({

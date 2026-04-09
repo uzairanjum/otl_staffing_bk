@@ -48,6 +48,8 @@ router.use(requireRole('admin'));
 
 router.get('/', clientController.getClients);
 router.post('/', validate(schemas.client), clientController.createClient);
+router.post('/full', validate(schemas.clientWithDetails), clientController.createClientWithDetails);
+router.put('/:id/full', validate(schemas.clientWithDetailsUpdate), clientController.updateClientWithDetails);
 
 /**
  * @swagger
