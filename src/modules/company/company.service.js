@@ -52,11 +52,23 @@ class CompanyService {
   }
 
   async deleteRole(roleId, companyId) {
-    const role = await CompanyRole.findOneAndUpdate(
-      { _id: roleId, company_id: companyId },
-      { is_active: false },
-      { new: true }
-    );
+    const WorkerRole = require('../worker/WorkerRole');
+    const ShiftPosition = require('../shift/ShiftPosition');
+
+    const assignedWorkers = await WorkerRole.countDocuments({ company_role_id: roleId });
+    if (assignedWorkers > 0) {
+      throw new AppError('Cannot delete role assigned to workers', 400);
+    }
+
+    const shiftPositions = await ShiftPosition.countDocuments({ company_role_id: roleId });
+    if (shiftPositions > 0) {
+      throw new AppError('Cannot delete role used in shifts', 400);
+    }
+
+    const role = await CompanyRole.findOneAndDelete({
+      _id: roleId,
+      company_id: companyId
+    });
     if (!role) {
       throw new AppError('Role not found', 404);
     }
@@ -151,7 +163,7 @@ class CompanyService {
   }
 
   async deleteTrainingCategory(categoryId, companyId) {
-    const Training = require('../training/Training');
+    const Training = require('./Training');
     
     const linkedTraining = await Training.countDocuments({
       training_category_id: categoryId,

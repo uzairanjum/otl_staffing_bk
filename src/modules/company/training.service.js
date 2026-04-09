@@ -5,7 +5,11 @@ const { AppError } = require('../../common/middleware/error.middleware');
 
 class TrainingService {
   async getTrainings(companyId) {
-    return Training.find({ company_id: companyId, is_active: true });
+    return Training.find({ company_id: companyId }).sort({ updatedAt: -1 });
+  }
+
+  async getInactiveTrainings(companyId) {
+    return Training.find({ company_id: companyId, is_active: false }).sort({ updatedAt: -1 });
   }
 
   async createTraining(companyId, data) {

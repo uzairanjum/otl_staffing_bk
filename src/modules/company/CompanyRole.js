@@ -22,6 +22,10 @@ const companyRoleSchema = new mongoose.Schema({
   description: {
     type: String
   },
+  required_training_ids: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Training'
+  }],
   is_active: {
     type: Boolean,
     default: true

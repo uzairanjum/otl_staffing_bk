@@ -60,7 +60,9 @@ const schemas = {
     role_category_id: Joi.string().required(),
     category: Joi.string(),
     default_hourly_rate: Joi.number().min(0),
-    description: Joi.string()
+    description: Joi.string().allow(''),
+    required_training_ids: Joi.array().items(Joi.string()).default([]),
+    is_active: Joi.boolean()
   }),
 
   roleCategory: Joi.object({
@@ -214,7 +216,11 @@ const schemas = {
     name: Joi.string().required(),
     training_category_id: Joi.string().required(),
     category: Joi.string(),
-    description: Joi.string()
+    description: Joi.string().allow(''),
+    expiry: Joi.alternatives().try(Joi.date(), Joi.string()).required(),
+    validity: Joi.string().required(),
+    document_required: Joi.boolean().required(),
+    is_active: Joi.boolean().required()
   }),
 
   onboardingStep3: Joi.object({
