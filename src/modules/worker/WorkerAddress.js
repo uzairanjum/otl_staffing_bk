@@ -3,7 +3,7 @@ const mongoose = require('mongoose');
 const workerAddressSchema = new mongoose.Schema({
   worker_id: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'Worker',
+    ref: 'User',
     required: true
   },
   address_line1: {

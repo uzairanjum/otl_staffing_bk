@@ -47,8 +47,10 @@ class NotificationService {
       if (sendEmail) {
         try {
           await sendEmailWithTemplate(user.email, notification.title, 'notification', {
-            name: user.worker_id ? 
-              `${user.worker_id.first_name} ${user.worker_id.last_name}` : 'User',
+            name:
+              user.first_name && user.last_name
+                ? `${user.first_name} ${user.last_name}`
+                : user.name || 'User',
             title: notification.title,
             message: notification.message
           });

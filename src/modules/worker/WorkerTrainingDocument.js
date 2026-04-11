@@ -1,27 +1,56 @@
 const mongoose = require('mongoose');
 
-const workerTrainingDocumentSchema = new mongoose.Schema({
-  worker_training_id: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'WorkerTraining',
-    required: true
+const trainingFileEntrySchema = new mongoose.Schema(
+  {
+    training_id: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Training',
+      required: true,
+    },
+    file_url: {
+      type: String,
+      required: true,
+    },
+    cloudinary_public_id: {
+      type: String,
+    },
+    document_type: {
+      type: String,
+    },
+    uploaded_at: {
+      type: Date,
+      default: Date.now,
+    },
   },
-  file_url: {
-    type: String,
-    required: true
-  },
-  cloudinary_public_id: {
-    type: String
-  },
-  document_type: {
-    type: String
-  },
-  uploaded_at: {
-    type: Date,
-    default: Date.now
-  }
-}, {
-  timestamps: true
-});
+  { _id: true }
+);
 
-module.exports = mongoose.model('WorkerTrainingDocument', workerTrainingDocumentSchema);
+const workerTrainingDocumentBundleSchema = new mongoose.Schema(
+  {
+    company_id: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Company',
+      required: true,
+    },
+    worker_id: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      required: true,
+    },
+    worker_training_id: {
+      type: mongoose.Schema.Types.ObjectId,
+      required: true,
+    },
+    documents: {
+      type: [trainingFileEntrySchema],
+      default: [],
+    },
+  },
+  {
+    timestamps: true,
+  }
+);
+
+workerTrainingDocumentBundleSchema.index({ worker_id: 1, worker_training_id: 1 }, { unique: true });
+
+module.exports = mongoose.model('WorkerTrainingDocument', workerTrainingDocumentBundleSchema);

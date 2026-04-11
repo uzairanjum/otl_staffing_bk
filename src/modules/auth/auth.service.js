@@ -1,13 +1,11 @@
 const User = require('../../common/models/User');
-const Worker = require('../../modules/worker/Worker');
 const jwtUtil = require('../../common/utils/jwt');
 const { sendEmailWithTemplate } = require('../../config/email');
-const { v4: uuidv4 } = require('uuid');
 
 class AuthService {
   async login(email, password) {
     const user = await User.findOne({ email: email.toLowerCase() });
-    
+
     if (!user) {
       throw new Error('Invalid credentials');
     }
@@ -31,30 +29,30 @@ class AuthService {
     user.refresh_token = refreshToken;
     await user.save();
 
-    let worker = null;
-    let clientRep = null;
+    const userLoaded = await User.findById(user._id);
+    let workerPayload = null;
 
-    if (user.worker_id) {
-      worker = await Worker.findById(user.worker_id);
+    if (userLoaded.role === 'worker') {
+      workerPayload = {
+        id: userLoaded._id,
+        first_name: userLoaded.first_name,
+        last_name: userLoaded.last_name,
+        status: userLoaded.status,
+        onboarding_step: userLoaded.onboarding_step,
+      };
     }
 
     return {
       accessToken,
       refreshToken,
       user: {
-        id: user._id,
-        email: user.email,
-        role: user.role,
-        first_login: user.first_login,
-        company_id: user.company_id,
-        worker: worker ? {
-          id: worker._id,
-          first_name: worker.first_name,
-          last_name: worker.last_name,
-          status: worker.status,
-          onboarding_step: worker.onboarding_step
-        } : null
-      }
+        id: userLoaded._id,
+        email: userLoaded.email,
+        role: userLoaded.role,
+        first_login: userLoaded.first_login,
+        company_id: userLoaded.company_id,
+        worker: workerPayload,
+      },
     };
   }
 
@@ -64,7 +62,7 @@ class AuthService {
 
   async refresh(refreshToken) {
     const decoded = jwtUtil.verifyRefreshToken(refreshToken);
-    
+
     const user = await User.findById(decoded.user_id);
     if (!user || user.refresh_token !== refreshToken) {
       throw new Error('Invalid refresh token');
@@ -81,7 +79,7 @@ class AuthService {
 
   async changePassword(userId, currentPassword, newPassword) {
     const user = await User.findById(userId);
-    
+
     if (!user) {
       throw new Error('User not found');
     }
@@ -100,17 +98,20 @@ class AuthService {
 
   async forgotPassword(email) {
     const user = await User.findOne({ email: email.toLowerCase() });
-    
+
     if (!user) {
       return { message: 'If email exists, reset link will be sent' };
     }
 
     const resetToken = jwtUtil.generatePasswordResetToken(user._id);
-    
+
+    const displayName =
+      user.first_name && user.last_name
+        ? `${user.first_name} ${user.last_name}`
+        : user.name || 'User';
     await sendEmailWithTemplate(email, 'Password Reset', 'passwordReset', {
-      name: user.worker_id ? 
-        `${user.worker_id.first_name} ${user.worker_id.last_name}` : 'User',
-      resetUrl: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/reset-password?token=${resetToken}`
+      name: displayName,
+      resetUrl: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/reset-password?token=${resetToken}`,
     });
 
     return { message: 'If email exists, reset link will be sent' };
@@ -118,7 +119,7 @@ class AuthService {
 
   async resetPassword(token, newPassword) {
     const decoded = jwtUtil.verifyPasswordResetToken(token);
-    
+
     const user = await User.findById(decoded.user_id);
     if (!user) {
       throw new Error('Invalid token');

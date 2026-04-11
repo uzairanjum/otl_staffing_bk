@@ -3,7 +3,7 @@ const mongoose = require('mongoose');
 const workerWorkingHoursSchema = new mongoose.Schema({
   worker_id: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'Worker',
+    ref: 'User',
     required: true
   },
   day_of_week: {

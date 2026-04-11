@@ -55,7 +55,9 @@ class CompanyService {
     const WorkerRole = require('../worker/WorkerRole');
     const ShiftPosition = require('../shift/ShiftPosition');
 
-    const assignedWorkers = await WorkerRole.countDocuments({ company_role_id: roleId });
+    const assignedWorkers = await WorkerRole.countDocuments({
+      'roles.company_role_id': roleId,
+    });
     if (assignedWorkers > 0) {
       throw new AppError('Cannot delete role assigned to workers', 400);
     }
@@ -186,7 +188,7 @@ class CompanyService {
   }
 
   async getStats(companyId) {
-    const Worker = require('../worker/Worker');
+    const User = require('../../common/models/User');
     const Client = require('../client/Client');
     const Job = require('../job/Job');
     const Shift = require('../shift/Shift');
@@ -203,8 +205,8 @@ class CompanyService {
       assignmentCount,
       payrollReportCount
     ] = await Promise.all([
-      Worker.countDocuments({ company_id: companyId }),
-      Worker.countDocuments({ company_id: companyId, status: 'active' }),
+      User.countDocuments({ company_id: companyId, role: 'worker' }),
+      User.countDocuments({ company_id: companyId, role: 'worker', status: 'active' }),
       Client.countDocuments({ company_id: companyId }),
       Job.countDocuments({ company_id: companyId }),
       Shift.countDocuments({ company_id: companyId }),

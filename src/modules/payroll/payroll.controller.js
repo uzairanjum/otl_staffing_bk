@@ -5,7 +5,7 @@ class PayrollController {
   async submitPayrollReport(req, res, next) {
     try {
       const report = await payrollService.submitPayrollReport(
-        req.user.worker_id._id,
+        req.user._id,
         req.company_id,
         req.body
       );
@@ -17,7 +17,7 @@ class PayrollController {
 
   async getWorkerPayrollReports(req, res, next) {
     try {
-      const reports = await payrollService.getWorkerPayrollReports(req.user.worker_id._id);
+      const reports = await payrollService.getWorkerPayrollReports(req.user._id);
       res.json(reports);
     } catch (error) {
       next(new AppError(error.message, error.statusCode || 500));

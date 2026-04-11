@@ -1,4 +1,5 @@
 const Joi = require('joi');
+const WorkerFileModel = require('../../modules/worker/WorkerFile');
 
 const validate = (schema) => {
   return (req, res, next) => {
@@ -44,8 +45,82 @@ const schemas = {
     email: Joi.string().email().required(),
     first_name: Joi.string().required(),
     last_name: Joi.string().required(),
-    phone: Joi.string(),
-    role_ids: Joi.array().items(Joi.string())
+    phone: Joi.string().allow('', null),
+    role_ids: Joi.array().items(Joi.string()).default([]),
+    role_assignments: Joi.array()
+      .items(
+        Joi.object({
+          company_role_id: Joi.string().required(),
+          hourly_rate_override: Joi.number().optional(),
+        })
+      )
+      .default([]),
+    additional_training_ids: Joi.array().items(Joi.string()).default([]),
+    send_invite: Joi.boolean().default(true),
+  }),
+
+  workerOnboardingBasicInfo: Joi.object({
+    first_name: Joi.string().trim().required(),
+    last_name: Joi.string().trim().required(),
+    email: Joi.string().email().required(),
+    phone: Joi.string().trim().required(),
+    address: Joi.object({
+      address_line1: Joi.string().allow('', null),
+      address_line2: Joi.string().allow('', null),
+      city: Joi.string().allow('', null),
+      state: Joi.string().allow('', null),
+      postal_code: Joi.string().allow('', null),
+      country: Joi.string().allow('', null),
+    }).required(),
+  }),
+
+  workerOnboardingEmergencyContact: Joi.object({
+    contact_name: Joi.string().trim().required(),
+    phone: Joi.string().trim().required(),
+    relationship: Joi.string().trim().required(),
+    address: Joi.object({
+      address_line1: Joi.string().allow('', null),
+      address_line2: Joi.string().allow('', null),
+      city: Joi.string().allow('', null),
+      state: Joi.string().allow('', null),
+      postal_code: Joi.string().allow('', null),
+      country: Joi.string().allow('', null),
+    }),
+    address_line1: Joi.string().allow('', null),
+    address_line2: Joi.string().allow('', null),
+    city: Joi.string().allow('', null),
+    state: Joi.string().allow('', null),
+    postal_code: Joi.string().allow('', null),
+    country: Joi.string().allow('', null),
+  }).or('address', 'address_line1', 'address_line2', 'city', 'state', 'postal_code', 'country'),
+
+  workerOnboardingTaxBank: Joi.object({
+    national_id: Joi.string().trim().required(),
+    tax_number: Joi.string().trim().allow('', null),
+    bank_name: Joi.string().trim().required(),
+    account_name: Joi.string().trim().required(),
+    account_number: Joi.string().trim().required(),
+    routing_number: Joi.string().trim().required(),
+  }),
+
+  workerFileUpload: Joi.object({
+    file_type: Joi.string()
+      .valid(...WorkerFileModel.FILE_TYPES)
+      .required(),
+    file_url: Joi.string().required(),
+    cloudinary_public_id: Joi.string().allow('', null),
+    dvla_code: Joi.string().allow('', null),
+    dvla_date: Joi.alternatives().try(Joi.date(), Joi.string().allow(''), Joi.valid(null)),
+  }),
+
+  workerFileMeta: Joi.object({
+    dvla_code: Joi.string().allow('', null),
+    dvla_date: Joi.alternatives().try(
+      Joi.number().integer(),
+      Joi.date(),
+      Joi.string().allow(''),
+      Joi.valid(null)
+    ),
   }),
 
   companyUpdate: Joi.object({

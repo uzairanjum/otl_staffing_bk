@@ -8,7 +8,7 @@ const shiftPositionAssignmentSchema = new mongoose.Schema({
   },
   worker_id: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'Worker',
+    ref: 'User',
     required: true
   },
   company_id: {

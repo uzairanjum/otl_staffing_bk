@@ -1,14 +1,20 @@
 const PayrollReport = require('./PayrollReport');
 const PayrollReportEntry = require('./PayrollReportEntry');
 const ShiftPositionAssignment = require('../shift/ShiftPositionAssignment');
-const Worker = require('../worker/Worker');
+const User = require('../../common/models/User');
 const WorkerRole = require('../worker/WorkerRole');
+const CompanyRole = require('../company/CompanyRole');
 const { AppError } = require('../../common/middleware/error.middleware');
 
 class PayrollService {
   async submitPayrollReport(workerId, companyId, data) {
-    const worker = await Worker.findOne({ _id: workerId, company_id: companyId, status: 'active' });
-    if (!worker) {
+    const staffUser = await User.findOne({
+      _id: workerId,
+      company_id: companyId,
+      role: 'worker',
+      status: 'active',
+    });
+    if (!staffUser) {
       throw new AppError('Worker not found or not active', 404);
     }
 
@@ -33,19 +39,39 @@ class PayrollService {
             _id: entry.shift_assignment_id,
             worker_id: workerId,
             status: 'completed'
+          }).populate({
+            path: 'shift_position_id',
+            select: 'company_role_id',
+            populate: { path: 'company_role_id', select: 'default_hourly_rate' },
           });
 
           if (assignment && assignment.worker_end_time && assignment.worker_start_time) {
             hoursWorked = (assignment.worker_end_time - assignment.worker_start_time) / (1000 * 60 * 60);
           }
 
-          const workerRole = await WorkerRole.findOne({ worker_id: workerId });
-          if (workerRole && workerRole.hourly_rate_override) {
-            hourlyRate = workerRole.hourly_rate_override;
-          } else {
-            const CompanyRole = require('../company/CompanyRole');
-            const role = await CompanyRole.findById(workerRole?.company_role_id);
+          const positionRoleId =
+            assignment?.shift_position_id?.company_role_id?._id ||
+            assignment?.shift_position_id?.company_role_id;
+          const wrDoc = await WorkerRole.findOne({ worker_id: workerId, company_id: companyId });
+          let roleEntry = null;
+          if (wrDoc && positionRoleId) {
+            roleEntry = wrDoc.roles.find(
+              (r) => String(r.company_role_id) === String(positionRoleId)
+            );
+          }
+          if (roleEntry?.hourly_rate_override != null) {
+            hourlyRate = roleEntry.hourly_rate_override;
+          } else if (positionRoleId) {
+            const role = await CompanyRole.findById(positionRoleId);
             hourlyRate = role?.default_hourly_rate || 0;
+          } else if (wrDoc?.roles?.length) {
+            const first = wrDoc.roles[0];
+            if (first.hourly_rate_override != null) {
+              hourlyRate = first.hourly_rate_override;
+            } else {
+              const role = await CompanyRole.findById(first.company_role_id);
+              hourlyRate = role?.default_hourly_rate || 0;
+            }
           }
         }
 

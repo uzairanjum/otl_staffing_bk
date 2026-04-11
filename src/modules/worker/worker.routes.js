@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const workerController = require('./worker.controller');
+const { uploadWorkerFileSingle } = require('./worker.upload.middleware');
 const { authenticate, requireRole } = require('../../common/middleware/auth.middleware');
 const { validate, schemas } = require('../../common/middleware/validation.middleware');
 
@@ -124,6 +125,27 @@ router.get('/', authenticate, requireRole('admin'), workerController.getWorkers)
  */
 router.get('/:id', authenticate, requireRole('admin'), workerController.getWorker);
 router.put('/:id', authenticate, requireRole('admin'), workerController.updateWorker);
+router.put(
+  '/:id/onboarding/basic-info',
+  authenticate,
+  requireRole('admin'),
+  validate(schemas.workerOnboardingBasicInfo),
+  workerController.saveOnboardingBasicInfo
+);
+router.put(
+  '/:id/onboarding/emergency-contact',
+  authenticate,
+  requireRole('admin'),
+  validate(schemas.workerOnboardingEmergencyContact),
+  workerController.saveOnboardingEmergencyContact
+);
+router.put(
+  '/:id/onboarding/tax-bank',
+  authenticate,
+  requireRole('admin'),
+  validate(schemas.workerOnboardingTaxBank),
+  workerController.saveOnboardingTaxBank
+);
 
 /**
  * @swagger
@@ -238,34 +260,42 @@ router.put('/:id/suspend', authenticate, requireRole('admin'), workerController.
  *       403:
  *         $ref: '#/components/responses/Forbidden'
  */
+router.put(
+  '/:id/files/meta',
+  authenticate,
+  requireRole('admin'),
+  validate(schemas.workerFileMeta),
+  workerController.updateWorkerFilesMeta
+);
 router.get('/:id/files', authenticate, requireRole('admin'), workerController.getWorkerFiles);
-router.post('/:id/files', authenticate, requireRole('admin'), workerController.uploadWorkerFile);
+router.post(
+  '/:id/files/upload',
+  authenticate,
+  requireRole('admin'),
+  uploadWorkerFileSingle,
+  workerController.uploadWorkerFileMultipart
+);
+router.post(
+  '/:id/files',
+  authenticate,
+  requireRole('admin'),
+  validate(schemas.workerFileUpload),
+  workerController.uploadWorkerFile
+);
+router.delete(
+  '/:id/files/:fileId',
+  authenticate,
+  requireRole('admin'),
+  workerController.deleteWorkerFile
+);
 
-/**
- * @swagger
- * /api/workers/files/{fileId}:
- *   delete:
- *     summary: Delete worker file
- *     description: Delete a worker's uploaded file
- *     tags: [Workers]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: fileId
- *         required: true
- *         schema:
- *           type: string
- *         description: File ID
- *     responses:
- *       200:
- *         description: File deleted successfully
- *       401:
- *         $ref: '#/components/responses/Unauthorized'
- *       403:
- *         $ref: '#/components/responses/Forbidden'
- */
-router.delete('/files/:fileId', authenticate, requireRole('admin'), workerController.deleteWorkerFile);
+router.post(
+  '/:id/training-documents/upload',
+  authenticate,
+  requireRole('admin'),
+  uploadWorkerFileSingle,
+  workerController.uploadWorkerTrainingDocumentMultipart
+);
 
 /**
  * @swagger

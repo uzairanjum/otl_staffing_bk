@@ -7,7 +7,7 @@ const { AppError } = require('../../common/middleware/error.middleware');
 class WorkerShiftController {
   async getOpenShifts(req, res, next) {
     try {
-      const shifts = await shiftService.getWorkerOpenShifts(req.user.worker_id._id, req.company_id);
+      const shifts = await shiftService.getWorkerOpenShifts(req.user._id, req.company_id);
       res.json(shifts);
     } catch (error) {
       next(new AppError(error.message, error.statusCode || 500));
@@ -16,7 +16,7 @@ class WorkerShiftController {
 
   async getAssignedShifts(req, res, next) {
     try {
-      const shifts = await shiftService.getWorkerAssignedShifts(req.user.worker_id._id, req.company_id);
+      const shifts = await shiftService.getWorkerAssignedShifts(req.user._id, req.company_id);
       res.json(shifts);
     } catch (error) {
       next(new AppError(error.message, error.statusCode || 500));
@@ -25,7 +25,7 @@ class WorkerShiftController {
 
   async getUpcomingShifts(req, res, next) {
     try {
-      const shifts = await shiftService.getWorkerUpcomingShifts(req.user.worker_id._id, req.company_id);
+      const shifts = await shiftService.getWorkerUpcomingShifts(req.user._id, req.company_id);
       res.json(shifts);
     } catch (error) {
       next(new AppError(error.message, error.statusCode || 500));
@@ -37,7 +37,7 @@ class WorkerShiftController {
       const assignment = await shiftService.requestShift(
         req.params.shiftId,
         req.params.positionId,
-        req.user.worker_id._id,
+        req.user._id,
         req.company_id
       );
       res.status(201).json(assignment);
@@ -51,7 +51,7 @@ class WorkerShiftController {
       const assignment = await shiftService.unassignWorker(
         req.params.shiftId,
         req.params.positionId,
-        req.user.worker_id._id,
+        req.user._id,
         req.company_id,
         'worker',
         req.body.reason
