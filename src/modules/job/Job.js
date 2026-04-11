@@ -29,4 +29,4 @@ const jobSchema = new mongoose.Schema({
 
 jobSchema.index({ company_id: 1, client_id: 1 });
 
-module.exports = mongoose.model('Job', jobSchema);
+module.exports = mongoose.model('Job', jobSchema, 'jobs');

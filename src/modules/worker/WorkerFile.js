@@ -64,7 +64,7 @@ const workerFileBundleSchema = new mongoose.Schema(
   }
 );
 
-const WorkerFile = mongoose.model('WorkerFile', workerFileBundleSchema);
+const WorkerFile = mongoose.model('WorkerFile', workerFileBundleSchema, 'worker_files');
 WorkerFile.FILE_TYPES = FILE_TYPES;
 
 module.exports = WorkerFile;

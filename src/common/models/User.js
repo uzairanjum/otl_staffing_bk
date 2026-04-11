@@ -129,4 +129,4 @@ userSchema.methods.comparePassword = async function(candidatePassword) {
 
 userSchema.index({ email: 1, company_id: 1 }, { unique: true });
 
-module.exports = mongoose.model('User', userSchema);
+module.exports = mongoose.model('User', userSchema, 'users');

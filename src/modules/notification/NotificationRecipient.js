@@ -33,4 +33,4 @@ const notificationRecipientSchema = new mongoose.Schema({
 notificationRecipientSchema.index({ notification_id: 1, user_id: 1 }, { unique: true });
 notificationRecipientSchema.index({ user_id: 1, status: 1 });
 
-module.exports = mongoose.model('NotificationRecipient', notificationRecipientSchema);
+module.exports = mongoose.model('NotificationRecipient', notificationRecipientSchema, 'notification_recipients');

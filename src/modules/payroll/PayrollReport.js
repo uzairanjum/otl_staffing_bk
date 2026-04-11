@@ -49,4 +49,4 @@ const payrollReportSchema = new mongoose.Schema({
 
 payrollReportSchema.index({ worker_id: 1, start_date: 1, end_date: 1 });
 
-module.exports = mongoose.model('PayrollReport', payrollReportSchema);
+module.exports = mongoose.model('PayrollReport', payrollReportSchema, 'payroll_reports');

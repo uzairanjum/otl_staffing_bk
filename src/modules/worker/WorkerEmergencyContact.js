@@ -41,4 +41,4 @@ const workerEmergencyContactSchema = new mongoose.Schema({
   timestamps: true
 });
 
-module.exports = mongoose.model('WorkerEmergencyContact', workerEmergencyContactSchema);
+module.exports = mongoose.model('WorkerEmergencyContact', workerEmergencyContactSchema, 'worker_emergencycontacts');

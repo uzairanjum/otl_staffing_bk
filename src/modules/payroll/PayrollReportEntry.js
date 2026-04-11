@@ -54,4 +54,4 @@ const payrollReportEntrySchema = new mongoose.Schema({
 
 payrollReportEntrySchema.index({ payroll_report_id: 1 });
 
-module.exports = mongoose.model('PayrollReportEntry', payrollReportEntrySchema);
+module.exports = mongoose.model('PayrollReportEntry', payrollReportEntrySchema, 'payroll_report_entries');

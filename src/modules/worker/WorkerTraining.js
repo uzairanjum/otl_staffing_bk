@@ -57,4 +57,4 @@ const workerTrainingSchema = new mongoose.Schema({
 
 workerTrainingSchema.index({ company_id: 1, worker_id: 1 }, { unique: true });
 
-module.exports = mongoose.model('WorkerTraining', workerTrainingSchema);
+module.exports = mongoose.model('WorkerTraining', workerTrainingSchema, 'worker_trainings');

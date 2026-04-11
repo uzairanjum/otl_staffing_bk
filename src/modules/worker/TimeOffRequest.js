@@ -33,4 +33,4 @@ const timeOffRequestSchema = new mongoose.Schema({
 
 timeOffRequestSchema.index({ worker_id: 1, start_date: 1, end_date: 1 });
 
-module.exports = mongoose.model('TimeOffRequest', timeOffRequestSchema);
+module.exports = mongoose.model('TimeOffRequest', timeOffRequestSchema, 'time_off_requests');

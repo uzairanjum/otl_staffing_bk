@@ -32,4 +32,4 @@ const unassignmentSchema = new mongoose.Schema({
   timestamps: true
 });
 
-module.exports = mongoose.model('Unassignment', unassignmentSchema);
+module.exports = mongoose.model('Unassignment', unassignmentSchema, 'un_assignments');

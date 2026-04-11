@@ -29,4 +29,4 @@ const workerAddressSchema = new mongoose.Schema({
   timestamps: true
 });
 
-module.exports = mongoose.model('WorkerAddress', workerAddressSchema);
+module.exports = mongoose.model('WorkerAddress', workerAddressSchema, 'worker_addresses');

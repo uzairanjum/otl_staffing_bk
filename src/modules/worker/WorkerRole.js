@@ -32,4 +32,4 @@ const workerRoleSchema = new mongoose.Schema({
 
 workerRoleSchema.index({ company_id: 1, worker_id: 1 }, { unique: true });
 
-module.exports = mongoose.model('WorkerRole', workerRoleSchema);
+module.exports = mongoose.model('WorkerRole', workerRoleSchema, 'worker_roles');

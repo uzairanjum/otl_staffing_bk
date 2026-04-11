@@ -21,4 +21,4 @@ const roleCategorySchema = new mongoose.Schema({
 
 roleCategorySchema.index({ company_id: 1, name: 1 }, { unique: true });
 
-module.exports = mongoose.model('RoleCategory', roleCategorySchema);
+module.exports = mongoose.model('RoleCategory', roleCategorySchema, 'role_categories');

@@ -1,5 +1,5 @@
 /**
- * Merges legacy workerfiles (one document per upload with root-level file_type)
+ * Merges legacy worker_files (one document per upload with root-level file_type)
  * into one bundle document per worker_id (files[] + dvla fields).
  *
  * Run from backend folder: node scripts/migrate-workerfiles-bundles.js
@@ -10,14 +10,14 @@ const config = require('../src/config');
 
 async function run() {
   await mongoose.connect(config.mongodb.uri);
-  const coll = mongoose.connection.collection('workerfiles');
+  const coll = mongoose.connection.collection('worker_files');
 
   const legacy = await coll
     .find({ file_type: { $exists: true }, files: { $exists: false } })
     .toArray();
 
   if (legacy.length === 0) {
-    console.log('No legacy workerfiles documents found. Nothing to do.');
+    console.log('No legacy worker_files documents found. Nothing to do.');
     await mongoose.disconnect();
     return;
   }

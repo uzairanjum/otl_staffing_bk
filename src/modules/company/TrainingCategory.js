@@ -21,4 +21,4 @@ const trainingCategorySchema = new mongoose.Schema({
 
 trainingCategorySchema.index({ company_id: 1, name: 1 }, { unique: true });
 
-module.exports = mongoose.model('TrainingCategory', trainingCategorySchema);
+module.exports = mongoose.model('TrainingCategory', trainingCategorySchema, 'training_categories');

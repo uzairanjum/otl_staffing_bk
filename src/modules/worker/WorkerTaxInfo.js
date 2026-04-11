@@ -16,4 +16,4 @@ const workerTaxInfoSchema = new mongoose.Schema({
   timestamps: true
 });
 
-module.exports = mongoose.model('WorkerTaxInfo', workerTaxInfoSchema);
+module.exports = mongoose.model('WorkerTaxInfo', workerTaxInfoSchema, 'worker_taxinfos');

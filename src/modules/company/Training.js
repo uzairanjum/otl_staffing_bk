@@ -39,4 +39,4 @@ const trainingSchema = new mongoose.Schema({
 
 trainingSchema.index({ company_id: 1 });
 
-module.exports = mongoose.model('Training', trainingSchema);
+module.exports = mongoose.model('Training', trainingSchema, 'trainings');

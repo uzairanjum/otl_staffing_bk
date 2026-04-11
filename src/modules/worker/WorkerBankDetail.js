@@ -22,4 +22,4 @@ const workerBankDetailSchema = new mongoose.Schema({
   timestamps: true
 });
 
-module.exports = mongoose.model('WorkerBankDetail', workerBankDetailSchema);
+module.exports = mongoose.model('WorkerBankDetail', workerBankDetailSchema, 'worker_bankdetails');

@@ -57,4 +57,4 @@ const shiftPositionAssignmentSchema = new mongoose.Schema({
 shiftPositionAssignmentSchema.index({ shift_position_id: 1, worker_id: 1 }, { unique: true });
 shiftPositionAssignmentSchema.index({ worker_id: 1, status: 1 });
 
-module.exports = mongoose.model('ShiftPositionAssignment', shiftPositionAssignmentSchema);
+module.exports = mongoose.model('ShiftPositionAssignment', shiftPositionAssignmentSchema, 'shift_positionassignments');

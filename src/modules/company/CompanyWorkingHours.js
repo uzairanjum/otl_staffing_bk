@@ -26,4 +26,4 @@ const companyWorkingHoursSchema = new mongoose.Schema({
 
 companyWorkingHoursSchema.index({ company_id: 1, day_of_week: 1 }, { unique: true });
 
-module.exports = mongoose.model('CompanyWorkingHours', companyWorkingHoursSchema);
+module.exports = mongoose.model('CompanyWorkingHours', companyWorkingHoursSchema, 'company_workinghours');

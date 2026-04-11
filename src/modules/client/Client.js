@@ -39,4 +39,4 @@ const clientSchema = new mongoose.Schema({
 
 clientSchema.index({ company_id: 1 });
 
-module.exports = mongoose.model('Client', clientSchema);
+module.exports = mongoose.model('Client', clientSchema, 'clients');
