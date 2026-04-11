@@ -109,6 +109,27 @@ const swaggerOptions = {
             }
           }
         },
+        AdminSendEmail: {
+          type: 'object',
+          required: ['email', 'subject', 'body'],
+          properties: {
+            email: {
+              type: 'string',
+              format: 'email',
+              example: 'worker@company.com'
+            },
+            subject: {
+              type: 'string',
+              maxLength: 200,
+              example: 'Onboarding update'
+            },
+            body: {
+              type: 'string',
+              maxLength: 50000,
+              example: 'Hello,\n\nPlease complete your remaining onboarding steps.'
+            }
+          }
+        },
         InviteWorker: {
           type: 'object',
           required: ['email', 'first_name', 'last_name'],
@@ -790,6 +811,10 @@ const swaggerOptions = {
       {
         name: 'Notifications',
         description: 'Notification endpoints'
+      },
+      {
+        name: 'Admin',
+        description: 'Admin-only utilities'
       }
     ]
   },

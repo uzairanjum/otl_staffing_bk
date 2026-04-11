@@ -73,6 +73,12 @@ const schemas = {
     token: Joi.string().required()
   }),
 
+  adminSendEmail: Joi.object({
+    email: Joi.string().email().required(),
+    subject: Joi.string().trim().min(1).max(200).required(),
+    body: Joi.string().trim().min(1).max(50000).required(),
+  }),
+
   inviteWorker: Joi.object({
     email: Joi.string().email().required(),
     first_name: Joi.string().required(),
