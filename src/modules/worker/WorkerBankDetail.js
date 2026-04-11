@@ -3,7 +3,7 @@ const mongoose = require('mongoose');
 const workerBankDetailSchema = new mongoose.Schema({
   worker_id: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'Worker',
+    ref: 'User',
     required: true
   },
   bank_name: {
@@ -22,4 +22,4 @@ const workerBankDetailSchema = new mongoose.Schema({
   timestamps: true
 });
 
-module.exports = mongoose.model('WorkerBankDetail', workerBankDetailSchema);
+module.exports = mongoose.model('WorkerBankDetail', workerBankDetailSchema, 'worker_bankdetails');

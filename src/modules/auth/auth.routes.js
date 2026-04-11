@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const authController = require('./auth.controller');
 const { authenticate, requireFirstLoginChange } = require('../../common/middleware/auth.middleware');
-const { validate, schemas } = require('../../common/middleware/validation.middleware');
+const { validate, validateQuery, schemas } = require('../../common/middleware/validation.middleware');
 
 /**
  * @swagger
@@ -135,11 +135,59 @@ router.post('/change-password', authenticate, requireFirstLoginChange, validate(
  *             $ref: '#/components/schemas/ForgotPassword'
  *     responses:
  *       200:
- *         description: Password reset email sent
+ *         description: Always returns { message } (does not reveal if email exists)
  *       400:
  *         $ref: '#/components/responses/ValidationError'
  */
 router.post('/forgot-password', validate(schemas.forgotPassword), authController.forgotPassword);
+
+/**
+ * @swagger
+ * /api/auth/verify-token:
+ *   get:
+ *     summary: Verify password reset / invite token
+ *     tags: [Auth]
+ *     parameters:
+ *       - in: query
+ *         name: token
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Token is valid
+ *       400:
+ *         description: Invalid or expired token
+ */
+router.get('/verify-token', validateQuery(schemas.verifyTokenQuery), authController.verifyResetToken);
+
+/**
+ * @swagger
+ * /api/auth/set-password:
+ *   post:
+ *     summary: Set password with magic link token (returns session like login)
+ *     tags: [Auth]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [token, password, confirmPassword]
+ *             properties:
+ *               token:
+ *                 type: string
+ *               password:
+ *                 type: string
+ *               confirmPassword:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Password set; tokens returned
+ *       400:
+ *         description: Validation or invalid token
+ */
+router.post('/set-password', validate(schemas.setPassword), authController.setPassword);
 
 /**
  * @swagger
@@ -156,7 +204,7 @@ router.post('/forgot-password', validate(schemas.forgotPassword), authController
  *             $ref: '#/components/schemas/ResetPassword'
  *     responses:
  *       200:
- *         description: Password reset successfully
+ *         description: Password set; same payload as login (accessToken, user); refresh cookie set
  *       400:
  *         $ref: '#/components/responses/ValidationError'
  */

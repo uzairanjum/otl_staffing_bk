@@ -139,49 +139,65 @@ const seedCompany = async () => {
         name: 'OSHA Safety', 
         category: 'Safety', 
         description: 'Occupational Safety and Health Administration safety training',
-        document_required: true
+        document_required: true,
+        expiry: new Date('2026-12-31'),
+        validity: '2 yr'
       },
       { 
         name: 'Food Safety Certification', 
         category: 'Food Handling', 
         description: 'Food safety best practices certification',
-        document_required: true
+        document_required: true,
+        expiry: new Date('2026-12-31'),
+        validity: '2 yr'
       },
       { 
         name: 'ServSafe Certification', 
         category: 'Food Handling', 
         description: 'ServSafe food handler certification',
-        document_required: true
+        document_required: true,
+        expiry: new Date('2026-12-31'),
+        validity: '2 yr'
       },
       { 
         name: 'TIPS Certification', 
         category: 'Food Handling', 
         description: 'Training for Intervention Procedures certification',
-        document_required: true
+        document_required: true,
+        expiry: new Date('2026-12-31'),
+        validity: '2 yr'
       },
       { 
         name: 'Customer Service Excellence', 
         category: 'Customer Service', 
         description: 'Customer service skills and best practices',
-        document_required: false
+        document_required: false,
+        expiry: new Date('2026-12-31'),
+        validity: '2 yr'
       },
       { 
         name: 'Conflict Resolution', 
         category: 'Customer Service', 
         description: 'Conflict de-escalation and resolution training',
-        document_required: false
+        document_required: false,
+        expiry: new Date('2026-12-31'),
+        validity: '2 yr'
       },
       { 
         name: 'POS System Training', 
         category: 'Equipment', 
         description: 'Point of sale system operation training',
-        document_required: false
+        document_required: false,
+        expiry: new Date('2026-12-31'),
+        validity: '2 yr'
       },
       { 
         name: 'Alcohol Service Training', 
         category: 'Food Handling', 
         description: 'Responsible alcohol service training',
-        document_required: true
+        document_required: true,
+        expiry: new Date('2026-12-31'),
+        validity: '2 yr'
       }
     ];
 
@@ -194,6 +210,8 @@ const seedCompany = async () => {
           training_category_id: createdTrainingCategories[training.category],
           description: training.description,
           document_required: training.document_required,
+          expiry: training.expiry,
+          validity: training.validity,
           is_active: true
         });
         console.log(`Training created: ${training.name}`);

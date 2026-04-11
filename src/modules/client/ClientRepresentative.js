@@ -32,4 +32,4 @@ const clientRepresentativeSchema = new mongoose.Schema({
 
 clientRepresentativeSchema.index({ client_id: 1, email: 1 }, { unique: true });
 
-module.exports = mongoose.model('ClientRepresentative', clientRepresentativeSchema);
+module.exports = mongoose.model('ClientRepresentative', clientRepresentativeSchema, 'client_representatives');

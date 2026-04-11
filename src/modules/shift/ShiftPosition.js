@@ -35,4 +35,4 @@ const shiftPositionSchema = new mongoose.Schema({
 
 shiftPositionSchema.index({ shift_id: 1, company_role_id: 1 });
 
-module.exports = mongoose.model('ShiftPosition', shiftPositionSchema);
+module.exports = mongoose.model('ShiftPosition', shiftPositionSchema, 'shift_positions');

@@ -8,7 +8,7 @@ const unassignmentSchema = new mongoose.Schema({
   },
   worker_id: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'Worker',
+    ref: 'User',
     required: true
   },
   company_id: {
@@ -32,4 +32,4 @@ const unassignmentSchema = new mongoose.Schema({
   timestamps: true
 });
 
-module.exports = mongoose.model('Unassignment', unassignmentSchema);
+module.exports = mongoose.model('Unassignment', unassignmentSchema, 'un_assignments');

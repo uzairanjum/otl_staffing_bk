@@ -15,12 +15,19 @@ const trainingSchema = new mongoose.Schema({
     ref: 'TrainingCategory',
     required: true
   },
-  document_required:{
+  document_required: {
     type: Boolean,
     default: false
   },
   description: {
     type: String
+  },
+  expiry: {
+    type: Date
+  },
+  validity: {
+    type: String,
+    trim: true
   },
   is_active: {
     type: Boolean,
@@ -32,4 +39,4 @@ const trainingSchema = new mongoose.Schema({
 
 trainingSchema.index({ company_id: 1 });
 
-module.exports = mongoose.model('Training', trainingSchema);
+module.exports = mongoose.model('Training', trainingSchema, 'trainings');

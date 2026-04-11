@@ -89,6 +89,26 @@ const swaggerOptions = {
             }
           }
         },
+        SetPassword: {
+          type: 'object',
+          required: ['token', 'password', 'confirmPassword'],
+          properties: {
+            token: {
+              type: 'string',
+              example: 'opaque-token-from-email'
+            },
+            password: {
+              type: 'string',
+              minLength: 8,
+              example: 'newpassword123'
+            },
+            confirmPassword: {
+              type: 'string',
+              minLength: 8,
+              example: 'newpassword123'
+            }
+          }
+        },
         InviteWorker: {
           type: 'object',
           required: ['email', 'first_name', 'last_name'],

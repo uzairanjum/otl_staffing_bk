@@ -47,6 +47,7 @@ router.use(authenticate);
 router.use(requireRole('admin'));
 
 router.get('/', trainingController.getTrainings);
+router.get('/inactive', trainingController.getInactiveTrainings);
 router.post('/', validate(schemas.training), trainingController.createTraining);
 
 /**
@@ -98,7 +99,7 @@ router.post('/', validate(schemas.training), trainingController.createTraining);
  *       403:
  *         $ref: '#/components/responses/Forbidden'
  */
-router.put('/:id', trainingController.updateTraining);
+router.put('/:id', validate(schemas.training), trainingController.updateTraining);
 router.delete('/:id', trainingController.deleteTraining);
 
 /**

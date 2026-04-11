@@ -1,4 +1,8 @@
+const config = require('../../config');
+const { uploadBufferToCloudinary } = require('../../config/cloudinary');
 const workerService = require('./worker.service');
+const trainingService = require('../company/training.service');
+const WorkerFile = require('./WorkerFile');
 const { AppError } = require('../../common/middleware/error.middleware');
 
 class WorkerController {
@@ -32,6 +36,45 @@ class WorkerController {
   async updateWorker(req, res, next) {
     try {
       const worker = await workerService.updateWorker(req.params.id, req.company_id, req.body);
+      res.json(worker);
+    } catch (error) {
+      next(new AppError(error.message, error.statusCode || 500));
+    }
+  }
+
+  async saveOnboardingBasicInfo(req, res, next) {
+    try {
+      const worker = await workerService.saveOnboardingBasicInfo(
+        req.params.id,
+        req.company_id,
+        req.body
+      );
+      res.json(worker);
+    } catch (error) {
+      next(new AppError(error.message, error.statusCode || 500));
+    }
+  }
+
+  async saveOnboardingEmergencyContact(req, res, next) {
+    try {
+      const worker = await workerService.saveOnboardingEmergencyContact(
+        req.params.id,
+        req.company_id,
+        req.body
+      );
+      res.json(worker);
+    } catch (error) {
+      next(new AppError(error.message, error.statusCode || 500));
+    }
+  }
+
+  async saveOnboardingTaxBank(req, res, next) {
+    try {
+      const worker = await workerService.saveOnboardingTaxBank(
+        req.params.id,
+        req.company_id,
+        req.body
+      );
       res.json(worker);
     } catch (error) {
       next(new AppError(error.message, error.statusCode || 500));
@@ -74,6 +117,97 @@ class WorkerController {
     }
   }
 
+  async uploadWorkerTrainingDocumentMultipart(req, res, next) {
+    try {
+      if (!req.file?.buffer) {
+        next(new AppError('File is required', 400));
+        return;
+      }
+      const { training_id, worker_training_id, document_type } = req.body;
+      if (!training_id || !worker_training_id) {
+        next(new AppError('training_id and worker_training_id are required', 400));
+        return;
+      }
+      if (
+        !config.cloudinary?.cloudName ||
+        !config.cloudinary?.apiKey ||
+        !config.cloudinary?.apiSecret
+      ) {
+        next(new AppError('File storage is not configured', 503));
+        return;
+      }
+
+      const { url, publicId } = await uploadBufferToCloudinary(
+        req.file.buffer,
+        `workers/${req.params.id}/training-documents`
+      );
+
+      const saved = await trainingService.uploadTrainingDocument(
+        training_id,
+        req.params.id,
+        req.company_id,
+        {
+          worker_training_id,
+          file_url: url,
+          cloudinary_public_id: publicId,
+          document_type: document_type || undefined,
+        }
+      );
+      res.status(201).json(saved);
+    } catch (error) {
+      next(new AppError(error.message, error.statusCode || 500));
+    }
+  }
+
+  async uploadWorkerFileMultipart(req, res, next) {
+    try {
+      if (!req.file?.buffer) {
+        next(new AppError('File is required', 400));
+        return;
+      }
+      const file_type = req.body.file_type;
+      if (!file_type || !WorkerFile.FILE_TYPES.includes(file_type)) {
+        next(new AppError('Invalid or missing file_type', 400));
+        return;
+      }
+      if (
+        !config.cloudinary?.cloudName ||
+        !config.cloudinary?.apiKey ||
+        !config.cloudinary?.apiSecret
+      ) {
+        next(new AppError('File storage is not configured', 503));
+        return;
+      }
+
+      const { url, publicId } = await uploadBufferToCloudinary(
+        req.file.buffer,
+        `workers/${req.params.id}/documents`
+      );
+
+      const saved = await workerService.uploadWorkerFile(req.params.id, req.company_id, {
+        file_type,
+        file_url: url,
+        cloudinary_public_id: publicId,
+      });
+      res.status(201).json(saved);
+    } catch (error) {
+      next(new AppError(error.message, error.statusCode || 500));
+    }
+  }
+
+  async updateWorkerFilesMeta(req, res, next) {
+    try {
+      const bundle = await workerService.updateWorkerFilesMeta(
+        req.params.id,
+        req.company_id,
+        req.body
+      );
+      res.json(bundle);
+    } catch (error) {
+      next(new AppError(error.message, error.statusCode || 500));
+    }
+  }
+
   async deleteWorkerFile(req, res, next) {
     try {
       const result = await workerService.deleteWorkerFile(req.params.id, req.company_id, req.params.fileId);
@@ -85,7 +219,7 @@ class WorkerController {
 
   async getOnboardingStatus(req, res, next) {
     try {
-      const status = await workerService.getOnboardingStatus(req.user.worker_id._id, req.company_id);
+      const status = await workerService.getOnboardingStatus(req.user._id, req.company_id);
       res.json(status);
     } catch (error) {
       next(new AppError(error.message, error.statusCode || 500));
@@ -94,7 +228,7 @@ class WorkerController {
 
   async submitContract(req, res, next) {
     try {
-      const worker = await workerService.submitContract(req.user.worker_id._id, req.company_id, req.body.name);
+      const worker = await workerService.submitContract(req.user._id, req.company_id, req.body.name);
       res.json(worker);
     } catch (error) {
       next(new AppError(error.message, error.statusCode || 500));
@@ -104,7 +238,7 @@ class WorkerController {
   async updateOnboardingStep(req, res, next) {
     try {
       const { step } = req.params;
-      const worker = await workerService.updateOnboardingStep(req.user.worker_id._id, req.company_id, parseInt(step), req.body);
+      const worker = await workerService.updateOnboardingStep(req.user._id, req.company_id, parseInt(step), req.body);
       res.json(worker);
     } catch (error) {
       next(new AppError(error.message, error.statusCode || 500));
@@ -113,7 +247,7 @@ class WorkerController {
 
   async requestTimeOff(req, res, next) {
     try {
-      const timeOff = await workerService.requestTimeOff(req.user.worker_id._id, req.company_id, req.body);
+      const timeOff = await workerService.requestTimeOff(req.user._id, req.company_id, req.body);
       res.status(201).json(timeOff);
     } catch (error) {
       next(new AppError(error.message, error.statusCode || 500));
@@ -122,7 +256,7 @@ class WorkerController {
 
   async getMyTimeOffs(req, res, next) {
     try {
-      const timeOffs = await workerService.getMyTimeOffs(req.user.worker_id._id);
+      const timeOffs = await workerService.getMyTimeOffs(req.user._id);
       res.json(timeOffs);
     } catch (error) {
       next(new AppError(error.message, error.statusCode || 500));
@@ -131,7 +265,7 @@ class WorkerController {
 
   async cancelTimeOff(req, res, next) {
     try {
-      const timeOff = await workerService.cancelTimeOff(req.params.id, req.user.worker_id._id);
+      const timeOff = await workerService.cancelTimeOff(req.params.id, req.user._id);
       res.json(timeOff);
     } catch (error) {
       next(new AppError(error.message, error.statusCode || 500));

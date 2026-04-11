@@ -41,4 +41,4 @@ const shiftSchema = new mongoose.Schema({
 
 shiftSchema.index({ company_id: 1, job_id: 1, date: 1 });
 
-module.exports = mongoose.model('Shift', shiftSchema);
+module.exports = mongoose.model('Shift', shiftSchema, 'shifts');

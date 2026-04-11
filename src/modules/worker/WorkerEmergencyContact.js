@@ -3,7 +3,7 @@ const mongoose = require('mongoose');
 const workerEmergencyContactSchema = new mongoose.Schema({
   worker_id: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'Worker',
+    ref: 'User',
     required: true
   },
   contact_name: {
@@ -41,4 +41,4 @@ const workerEmergencyContactSchema = new mongoose.Schema({
   timestamps: true
 });
 
-module.exports = mongoose.model('WorkerEmergencyContact', workerEmergencyContactSchema);
+module.exports = mongoose.model('WorkerEmergencyContact', workerEmergencyContactSchema, 'worker_emergencycontacts');

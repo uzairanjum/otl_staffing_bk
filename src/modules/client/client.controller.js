@@ -20,6 +20,24 @@ class ClientController {
     }
   }
 
+  async createClientWithDetails(req, res, next) {
+    try {
+      const result = await clientService.createClientWithDetails(req.company_id, req.body);
+      res.status(201).json(result);
+    } catch (error) {
+      next(new AppError(error.message, error.statusCode || 500));
+    }
+  }
+
+  async updateClientWithDetails(req, res, next) {
+    try {
+      const result = await clientService.updateClientWithDetails(req.params.id, req.company_id, req.body);
+      res.json(result);
+    } catch (error) {
+      next(new AppError(error.message, error.statusCode || 500));
+    }
+  }
+
   async getClient(req, res, next) {
     try {
       const client = await clientService.getClient(req.params.id, req.company_id);

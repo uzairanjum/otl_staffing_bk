@@ -3,7 +3,7 @@ const mongoose = require('mongoose');
 const workerWorkingHoursSchema = new mongoose.Schema({
   worker_id: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'Worker',
+    ref: 'User',
     required: true
   },
   day_of_week: {
@@ -26,4 +26,4 @@ const workerWorkingHoursSchema = new mongoose.Schema({
 
 workerWorkingHoursSchema.index({ worker_id: 1, day_of_week: 1 });
 
-module.exports = mongoose.model('WorkerWorkingHours', workerWorkingHoursSchema);
+module.exports = mongoose.model('WorkerWorkingHours', workerWorkingHoursSchema, 'worker_workinghours');

@@ -13,7 +13,7 @@ const reviewSchema = new mongoose.Schema({
   },
   worker_id: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'Worker',
+    ref: 'User',
     required: true
   },
   shift_id: {
@@ -52,4 +52,4 @@ const reviewSchema = new mongoose.Schema({
 reviewSchema.index({ shift_position_id: 1 }, { unique: true });
 reviewSchema.index({ client_id: 1, shift_id: 1 });
 
-module.exports = mongoose.model('Review', reviewSchema);
+module.exports = mongoose.model('Review', reviewSchema, 'reviews');

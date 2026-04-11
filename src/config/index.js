@@ -29,5 +29,13 @@ module.exports = {
     projectId: process.env.FIREBASE_PROJECT_ID,
     privateKey: process.env.FIREBASE_PRIVATE_KEY,
     clientEmail: process.env.FIREBASE_CLIENT_EMAIL
-  }
+  },
+  passwordReset: (() => {
+    const parsed = parseInt(process.env.RESET_TOKEN_EXPIRY_MINUTES || '15', 10);
+    const expiryMinutes = Number.isFinite(parsed) && parsed > 0 ? parsed : 15;
+    return {
+      expiryMinutes,
+      frontendUrl: process.env.FRONTEND_URL || 'http://localhost:3000',
+    };
+  })(),
 };

@@ -1,18 +1,24 @@
 const authService = require('./auth.service');
 const { AppError } = require('../../common/middleware/error.middleware');
 
+const REFRESH_COOKIE_MS = 7 * 24 * 60 * 60 * 1000;
+
+function setRefreshCookie(res, refreshToken) {
+  res.cookie('refreshToken', refreshToken, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'strict',
+    maxAge: REFRESH_COOKIE_MS,
+  });
+}
+
 class AuthController {
   async login(req, res, next) {
     try {
       const { email, password } = req.body;
       const result = await authService.login(email, password);
-      
-      res.cookie('refreshToken', result.refreshToken, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'strict',
-        max: 7 * 24 * 60 * 60 * 1000
-      });
+
+      setRefreshCookie(res, result.refreshToken);
 
       res.json({
         accessToken: result.accessToken,
@@ -65,9 +71,38 @@ class AuthController {
     try {
       const { email } = req.body;
       const result = await authService.forgotPassword(email);
-      res.json(result);
+      res.status(200).json(result);
     } catch (error) {
       next(new AppError(error.message, 500));
+    }
+  }
+
+  async verifyResetToken(req, res, next) {
+    try {
+      const { token } = req.query;
+      const result = await authService.verifyPasswordResetToken(token);
+      if (!result.valid) {
+        return res.status(400).json(result);
+      }
+      res.json({ valid: true });
+    } catch (error) {
+      next(new AppError(error.message, 400));
+    }
+  }
+
+  async setPassword(req, res, next) {
+    try {
+      const { token, password, confirmPassword } = req.body;
+      const result = await authService.setPasswordWithLogin(token, password, confirmPassword);
+
+      setRefreshCookie(res, result.refreshToken);
+
+      res.json({
+        accessToken: result.accessToken,
+        user: result.user
+      });
+    } catch (error) {
+      next(new AppError(error.message, 400));
     }
   }
 
@@ -75,7 +110,13 @@ class AuthController {
     try {
       const { token, newPassword } = req.body;
       const result = await authService.resetPassword(token, newPassword);
-      res.json(result);
+
+      setRefreshCookie(res, result.refreshToken);
+
+      res.json({
+        accessToken: result.accessToken,
+        user: result.user
+      });
     } catch (error) {
       next(new AppError(error.message, 400));
     }

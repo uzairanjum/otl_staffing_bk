@@ -25,4 +25,4 @@ const fcmTokenSchema = new mongoose.Schema({
 
 fcmTokenSchema.index({ user_id: 1, token: 1 }, { unique: true });
 
-module.exports = mongoose.model('FcmToken', fcmTokenSchema);
+module.exports = mongoose.model('FcmToken', fcmTokenSchema, 'fcm_tokens');

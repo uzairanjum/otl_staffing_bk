@@ -2,7 +2,7 @@ const Shift = require('./Shift');
 const ShiftPosition = require('./ShiftPosition');
 const ShiftPositionAssignment = require('./ShiftPositionAssignment');
 const Unassignment = require('./Unassignment');
-const Worker = require('../worker/Worker');
+const User = require('../../common/models/User');
 const WorkerRole = require('../worker/WorkerRole');
 const TimeOffRequest = require('../worker/TimeOffRequest');
 const Job = require('../job/Job');
@@ -222,8 +222,13 @@ class ShiftService {
       throw new AppError('Position not found', 404);
     }
 
-    const worker = await Worker.findOne({ _id: workerId, company_id: companyId, status: 'active' });
-    if (!worker) {
+    const staffUser = await User.findOne({
+      _id: workerId,
+      company_id: companyId,
+      role: 'worker',
+      status: 'active',
+    });
+    if (!staffUser) {
       throw new AppError('Worker not found or not active', 404);
     }
 
@@ -327,8 +332,8 @@ class ShiftService {
   }
 
   async getWorkerOpenShifts(workerId, companyId) {
-    const workerRoles = await WorkerRole.find({ worker_id: workerId });
-    const roleIds = workerRoles.map(wr => wr.company_role_id);
+    const wrDoc = await WorkerRole.findOne({ worker_id: workerId, company_id: companyId });
+    const roleIds = (wrDoc?.roles || []).map((r) => r.company_role_id);
 
     const timeOffs = await TimeOffRequest.find({
       worker_id: workerId,

@@ -1,6 +1,11 @@
 const nodemailer = require('nodemailer');
 const config = require('./index');
 
+const expiryLine = (data) => {
+  const m = data.expiryMinutes ?? config.passwordReset?.expiryMinutes ?? 15;
+  return `This link will expire in ${m} minute${m === 1 ? '' : 's'}.`;
+};
+
 const createTransporter = () => {
   return nodemailer.createTransport({
     host: config.smtp.host,
@@ -46,16 +51,17 @@ const generateTemplate = (template, data) => {
       <p>Hello ${data.name},</p>
       <p>You have been invited to join OTL Staffing Platform.</p>
       <p><strong>Email:</strong> ${data.email}</p>
-      <p><strong>Temporary Password:</strong> ${data.tempPassword}</p>
-      <p>Please login and change your password on first login.</p>
-      <p><a href="${data.loginUrl}">Click here to login</a></p>
+      <p>Set your password using the secure link below (one-time use):</p>
+      <p><a href="${data.setPasswordUrl}">Set your password</a></p>
+      <p>${expiryLine(data)}</p>
+      <p>After setting your password you will be signed in automatically.</p>
     `,
     passwordReset: `
       <h2>Password Reset Request</h2>
       <p>Hello ${data.name},</p>
-      <p>Click the link below to reset your password:</p>
-      <p><a href="${data.resetUrl}">Reset Password</a></p>
-      <p>This link will expire in 1 hour.</p>
+      <p>Click the link below to set a new password:</p>
+      <p><a href="${data.resetUrl}">Set password</a></p>
+      <p>${expiryLine(data)}</p>
     `,
     shiftAssigned: `
       <h2>Shift Assigned</h2>
@@ -78,8 +84,8 @@ const generateTemplate = (template, data) => {
 
 const generateText = (template, data) => {
   const texts = {
-    invitation: `Welcome to OTL Staffing. You have been invited. Email: ${data.email}, Temp Password: ${data.tempPassword}. Login at ${data.loginUrl}`,
-    passwordReset: `Reset your password at ${data.resetUrl}. This link will expire in 1 hour.`,
+    invitation: `Welcome to OTL Staffing. Set your password: ${data.setPasswordUrl}. ${expiryLine(data)}`,
+    passwordReset: `Set your password at ${data.resetUrl}. ${expiryLine(data)}`,
     shiftAssigned: `You have been assigned to shift: ${data.shiftName} on ${data.date} from ${data.startTime} to ${data.endTime} at ${data.location}`,
     notification: `${data.title}: ${data.message}`
   };

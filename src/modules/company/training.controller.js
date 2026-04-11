@@ -11,6 +11,15 @@ class TrainingController {
     }
   }
 
+  async getInactiveTrainings(req, res, next) {
+    try {
+      const trainings = await trainingService.getInactiveTrainings(req.company_id);
+      res.json(trainings);
+    } catch (error) {
+      next(new AppError(error.message, error.statusCode || 500));
+    }
+  }
+
   async createTraining(req, res, next) {
     try {
       const training = await trainingService.createTraining(req.company_id, req.body);

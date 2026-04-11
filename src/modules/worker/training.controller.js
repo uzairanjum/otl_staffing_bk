@@ -4,7 +4,7 @@ const { AppError } = require('../../common/middleware/error.middleware');
 class WorkerTrainingController {
   async getMyTrainings(req, res, next) {
     try {
-      const workerId = req.user.worker_id._id;
+      const workerId = req.user._id;
       const trainings = await trainingService.getWorkerTrainings(workerId, req.company_id);
       res.json(trainings);
     } catch (error) {
@@ -14,7 +14,7 @@ class WorkerTrainingController {
 
   async uploadMyTrainingDocument(req, res, next) {
     try {
-      const workerId = req.user.worker_id._id;
+      const workerId = req.user._id;
       const { id: trainingId } = req.params;
       const document = await trainingService.uploadTrainingDocument(trainingId, workerId, req.company_id, req.body);
       res.status(201).json(document);

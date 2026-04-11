@@ -22,6 +22,10 @@ const companyRoleSchema = new mongoose.Schema({
   description: {
     type: String
   },
+  required_training_ids: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Training'
+  }],
   is_active: {
     type: Boolean,
     default: true
@@ -32,4 +36,4 @@ const companyRoleSchema = new mongoose.Schema({
 
 companyRoleSchema.index({ company_id: 1, name: 1 }, { unique: true });
 
-module.exports = mongoose.model('CompanyRole', companyRoleSchema);
+module.exports = mongoose.model('CompanyRole', companyRoleSchema, 'company_roles');

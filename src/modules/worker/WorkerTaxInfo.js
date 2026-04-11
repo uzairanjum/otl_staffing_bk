@@ -3,7 +3,7 @@ const mongoose = require('mongoose');
 const workerTaxInfoSchema = new mongoose.Schema({
   worker_id: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'Worker',
+    ref: 'User',
     required: true
   },
   tax_number: {
@@ -16,4 +16,4 @@ const workerTaxInfoSchema = new mongoose.Schema({
   timestamps: true
 });
 
-module.exports = mongoose.model('WorkerTaxInfo', workerTaxInfoSchema);
+module.exports = mongoose.model('WorkerTaxInfo', workerTaxInfoSchema, 'worker_taxinfos');

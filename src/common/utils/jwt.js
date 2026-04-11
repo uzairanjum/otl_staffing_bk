@@ -21,22 +21,8 @@ const verifyRefreshToken = (token) => {
   return jwt.verify(token, config.jwt.refreshSecret);
 };
 
-const generatePasswordResetToken = (userId) => {
-  return jwt.sign(
-    { user_id: userId, type: 'password_reset' },
-    config.jwt.secret,
-    { expiresIn: '1h' }
-  );
-};
-
-const verifyPasswordResetToken = (token) => {
-  return jwt.verify(token, config.jwt.secret);
-};
-
 module.exports = {
   generateAccessToken,
   generateRefreshToken,
   verifyRefreshToken,
-  generatePasswordResetToken,
-  verifyPasswordResetToken
 };

@@ -3,7 +3,7 @@ const mongoose = require('mongoose');
 const workerAddressSchema = new mongoose.Schema({
   worker_id: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'Worker',
+    ref: 'User',
     required: true
   },
   address_line1: {
@@ -29,4 +29,4 @@ const workerAddressSchema = new mongoose.Schema({
   timestamps: true
 });
 
-module.exports = mongoose.model('WorkerAddress', workerAddressSchema);
+module.exports = mongoose.model('WorkerAddress', workerAddressSchema, 'worker_addresses');

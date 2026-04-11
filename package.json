@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node src/app.js",
     "dev": "node src/app.js",
-    "seed": "node src/seed.js"
+    "seed": "node src/seed.js",
+    "init:admin": "node src/scripts/initAdminUser.js"
   },
   "keywords": [
     "staffing",

@@ -38,4 +38,4 @@ const notificationSchema = new mongoose.Schema({
 
 notificationSchema.index({ company_id: 1, created_at: -1 });
 
-module.exports = mongoose.model('Notification', notificationSchema);
+module.exports = mongoose.model('Notification', notificationSchema, 'notifications');
