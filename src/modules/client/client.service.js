@@ -4,6 +4,8 @@ const Job = require('../job/Job');
 const User = require('../../common/models/User');
 const { AppError } = require('../../common/middleware/error.middleware');
 const { sendEmailWithTemplate } = require('../../config/email');
+const config = require('../../config');
+const passwordResetTokenService = require('../../common/services/passwordResetToken.service');
 const { v4: uuidv4 } = require('uuid');
 
 class ClientService {
@@ -123,7 +125,7 @@ class ClientService {
         invitationPayloads.push({
           email: normalizedEmail,
           name: rep.name,
-          tempPassword
+          userId: representativeUser[0]._id,
         });
       }
 
@@ -141,12 +143,14 @@ class ClientService {
         );
       }
 
+      const baseUrl = config.passwordReset.frontendUrl.replace(/\/$/, '');
       for (const invite of invitationPayloads) {
+        const rawToken = await passwordResetTokenService.createTokenForUser(invite.userId, session);
         await sendEmailWithTemplate(invite.email, 'Welcome to OTL Staffing', 'invitation', {
           name: invite.name,
           email: invite.email,
-          tempPassword: invite.tempPassword,
-          loginUrl: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/auth/login`
+          setPasswordUrl: `${baseUrl}/auth/set-password?token=${rawToken}`,
+          expiryMinutes: config.passwordReset.expiryMinutes,
         });
       }
 
@@ -256,7 +260,7 @@ class ClientService {
         newRepInvitations.push({
           email: normalizedEmail,
           name: rep.name,
-          tempPassword
+          userId: createdRep[0]._id,
         });
       }
 
@@ -308,12 +312,14 @@ class ClientService {
         }).session(session);
       }
 
+      const inviteBaseUrl = config.passwordReset.frontendUrl.replace(/\/$/, '');
       for (const invite of newRepInvitations) {
+        const rawToken = await passwordResetTokenService.createTokenForUser(invite.userId, session);
         await sendEmailWithTemplate(invite.email, 'Welcome to OTL Staffing', 'invitation', {
           name: invite.name,
           email: invite.email,
-          tempPassword: invite.tempPassword,
-          loginUrl: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/auth/login`
+          setPasswordUrl: `${inviteBaseUrl}/auth/set-password?token=${rawToken}`,
+          expiryMinutes: config.passwordReset.expiryMinutes,
         });
       }
 
@@ -413,11 +419,13 @@ class ClientService {
       is_active: true
     });
 
+    const rawToken = await passwordResetTokenService.createTokenForUser(user._id);
+    const baseUrl = config.passwordReset.frontendUrl.replace(/\/$/, '');
     await sendEmailWithTemplate(normalizedEmail, 'Welcome to OTL Staffing', 'invitation', {
       name: repName,
       email: normalizedEmail,
-      tempPassword: tempPassword,
-      loginUrl: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/auth/login`
+      setPasswordUrl: `${baseUrl}/auth/set-password?token=${rawToken}`,
+      expiryMinutes: config.passwordReset.expiryMinutes,
     });
 
     return user;

@@ -12,6 +12,8 @@ const WorkerEmergencyContact = require('./WorkerEmergencyContact');
 const TimeOffRequest = require('./TimeOffRequest');
 const { AppError } = require('../../common/middleware/error.middleware');
 const { sendEmailWithTemplate } = require('../../config/email');
+const config = require('../../config');
+const passwordResetTokenService = require('../../common/services/passwordResetToken.service');
 const CompanyRole = require('../company/CompanyRole');
 const Training = require('../company/Training');
 const { v4: uuidv4 } = require('uuid');
@@ -254,11 +256,13 @@ class WorkerService {
       }
 
       if (data.send_invite !== false) {
+        const rawToken = await passwordResetTokenService.createTokenForUser(user._id, session);
+        const baseUrl = config.passwordReset.frontendUrl.replace(/\/$/, '');
         await sendEmailWithTemplate(data.email, 'Welcome to OTL Staffing', 'invitation', {
           name: `${data.first_name} ${data.last_name}`,
           email: data.email,
-          tempPassword: tempPassword,
-          loginUrl: process.env.FRONTEND_URL || 'http://localhost:3000',
+          setPasswordUrl: `${baseUrl}/auth/set-password?token=${rawToken}`,
+          expiryMinutes: config.passwordReset.expiryMinutes,
         });
       }
 

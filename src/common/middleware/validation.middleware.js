@@ -21,6 +21,26 @@ const validate = (schema) => {
   };
 };
 
+const validateQuery = (schema) => {
+  return (req, res, next) => {
+    const { error } = schema.validate(req.query, { abortEarly: false });
+
+    if (error) {
+      const errors = error.details.map((detail) => ({
+        field: detail.path.join('.'),
+        message: detail.message,
+      }));
+
+      return res.status(400).json({
+        error: 'Validation failed',
+        errors,
+      });
+    }
+
+    next();
+  };
+};
+
 const schemas = {
   login: Joi.object({
     email: Joi.string().email().required(),
@@ -39,6 +59,18 @@ const schemas = {
   resetPassword: Joi.object({
     token: Joi.string().required(),
     newPassword: Joi.string().min(8).required()
+  }),
+
+  setPassword: Joi.object({
+    token: Joi.string().required(),
+    password: Joi.string().min(8).required(),
+    confirmPassword: Joi.string().valid(Joi.ref('password')).required().messages({
+      'any.only': 'Passwords do not match',
+    }),
+  }),
+
+  verifyTokenQuery: Joi.object({
+    token: Joi.string().required()
   }),
 
   inviteWorker: Joi.object({
@@ -314,5 +346,6 @@ const schemas = {
 
 module.exports = {
   validate,
+  validateQuery,
   schemas
 };
