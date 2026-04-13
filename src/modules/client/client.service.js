@@ -14,6 +14,9 @@ class ClientService {
   }
 
   async getClients(companyId) {
+    if (!companyId) {
+      throw new AppError('Company context required', 400);
+    }
     const clients = await Client.find({ company_id: companyId }).sort({ createdAt: -1 });
     const clientIds = clients.map(client => client._id);
 
@@ -137,7 +140,8 @@ class ClientService {
             client_id: client._id,
             name: job.name,
             description: job.description,
-            status: job.status || 'draft'
+            location: job.location,
+            status: job.status || 'active'
           })),
           { session, ordered: true }
         );
@@ -285,6 +289,7 @@ class ClientService {
           const currentJob = existingJobMap.get(job.id);
           currentJob.name = job.name;
           currentJob.description = job.description;
+          currentJob.location = job.location;
           currentJob.status = job.status || currentJob.status;
           await currentJob.save({ session });
           retainedJobIds.add(currentJob._id.toString());
@@ -296,7 +301,8 @@ class ClientService {
           client_id: clientId,
           name: job.name,
           description: job.description,
-          status: job.status || 'draft'
+          location: job.location,
+          status: job.status || 'active'
         }], { session });
         retainedJobIds.add(createdJob[0]._id.toString());
       }

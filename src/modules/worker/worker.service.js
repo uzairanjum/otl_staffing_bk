@@ -9,6 +9,7 @@ const WorkerTrainingDocument = require('./WorkerTrainingDocument');
 const WorkerWorkingHours = require('./WorkerWorkingHours');
 const WorkerFile = require('./WorkerFile');
 const WorkerEmergencyContact = require('./WorkerEmergencyContact');
+const WorkerTimeOff = require('./WorkerTimeOff');
 const TimeOffRequest = require('./TimeOffRequest');
 const { AppError } = require('../../common/middleware/error.middleware');
 const { sendEmailWithTemplate } = require('../../config/email');
@@ -344,6 +345,7 @@ class WorkerService {
       workerFileBundle,
       timeOffs,
       emergencyContact,
+      workerTimeOff,
     ] = await Promise.all([
       WorkerRole.findOne({ worker_id: workerUserId, company_id: companyId }).populate(
         'roles.company_role_id'
@@ -360,6 +362,7 @@ class WorkerService {
       WorkerFile.findOne({ worker_id: workerUserId }),
       TimeOffRequest.find({ worker_id: workerUserId, status: 'active' }),
       WorkerEmergencyContact.findOne({ worker_id: workerUserId }),
+      WorkerTimeOff.findOne({ worker_id: workerUserId }),
     ]);
 
     return {
@@ -376,7 +379,49 @@ class WorkerService {
       dvla_code: workerFileBundle?.dvla_code,
       dvla_date: workerFileBundle?.dvla_date,
       time_offs: timeOffs,
+      worker_time_off: workerTimeOff,
     };
+  }
+
+  _advanceOnboardingStepIfExpected(user, expectedCurrentStep, nextStep, options = {}) {
+    if (typeof user.onboarding_step !== 'number') return false;
+    if (user.onboarding_step !== expectedCurrentStep) return false;
+
+    user.onboarding_step = nextStep;
+    if (options.setStatusOnboarding && user.status === 'invited') {
+      user.status = 'onboarding';
+    }
+    return true;
+  }
+
+  async saveOnboardingContract(workerUserId, companyId, data) {
+    const user = await User.findOne({
+      _id: workerUserId,
+      company_id: companyId,
+      role: 'worker',
+    });
+
+    if (!user) {
+      throw new AppError('Worker not found', 404);
+    }
+
+    if (user.status === 'active') {
+      throw new AppError('Contract cannot be changed for active workers here', 400);
+    }
+
+    const name = String(data.name || '').trim().replace(/\s+/g, ' ');
+    const expected = `${user.first_name} ${user.last_name}`.trim().replace(/\s+/g, ' ');
+    if (name.toLowerCase() !== expected.toLowerCase()) {
+      throw new AppError('Name does not match worker full name', 400);
+    }
+
+    if (this._advanceOnboardingStepIfExpected(user, 0, 1, { setStatusOnboarding: true })) {
+      user.contract_signed = true;
+      user.contract_signed_at = new Date();
+    }
+
+    await user.save();
+    return this.getWorker(workerUserId, companyId);
   }
 
   async saveOnboardingBasicInfo(workerUserId, companyId, data) {
@@ -425,8 +470,8 @@ class WorkerService {
       { upsert: true, new: true, runValidators: true }
     );
 
+    this._advanceOnboardingStepIfExpected(user, 1, 2);
     await user.save();
-
     return this.getWorker(workerUserId, companyId);
   }
 
@@ -480,6 +525,8 @@ class WorkerService {
       { upsert: true, new: true, runValidators: true }
     );
 
+    this._advanceOnboardingStepIfExpected(user, 2, 3);
+    await user.save();
     return this.getWorker(workerUserId, companyId);
   }
 
@@ -522,6 +569,101 @@ class WorkerService {
       { upsert: true, new: true, runValidators: true }
     );
 
+    this._advanceOnboardingStepIfExpected(user, 3, 4);
+    await user.save();
+    return this.getWorker(workerUserId, companyId);
+  }
+
+  async saveOnboardingTimeOff(workerUserId, companyId, data) {
+    const user = await User.findOne({
+      _id: workerUserId,
+      company_id: companyId,
+      role: 'worker',
+    });
+
+    if (!user) {
+      throw new AppError('Worker not found', 404);
+    }
+
+    if (user.status === 'active') {
+      throw new AppError('Time off cannot be changed for active workers here', 400);
+    }
+
+    const entries = Array.isArray(data.entries) ? data.entries : [];
+    const normalizedEntries = entries.map((entry, index) => {
+      const date = new Date(entry.date);
+      if (Number.isNaN(date.getTime())) {
+        throw new AppError(`Invalid time off date at row ${index + 1}`, 400);
+      }
+
+      const from = String(entry.from || '').trim();
+      const to = String(entry.to || '').trim();
+      if (!from || !to) {
+        throw new AppError(`Time off from/to is required at row ${index + 1}`, 400);
+      }
+      if (from >= to) {
+        throw new AppError(`Time off end time must be after start time at row ${index + 1}`, 400);
+      }
+
+      return {
+        date,
+        from,
+        to,
+      };
+    });
+
+    await WorkerTimeOff.findOneAndUpdate(
+      { worker_id: user._id },
+      {
+        worker_id: user._id,
+        notes: data.notes != null ? String(data.notes).trim() : '',
+        entries: normalizedEntries,
+      },
+      { upsert: true, new: true, runValidators: true }
+    );
+
+    this._advanceOnboardingStepIfExpected(user, 4, 5);
+    await user.save();
+    return this.getWorker(workerUserId, companyId);
+  }
+
+  async saveOnboardingDocuments(workerUserId, companyId) {
+    const user = await User.findOne({
+      _id: workerUserId,
+      company_id: companyId,
+      role: 'worker',
+    });
+
+    if (!user) {
+      throw new AppError('Worker not found', 404);
+    }
+
+    if (user.status === 'active') {
+      throw new AppError('Documents cannot be changed for active workers here', 400);
+    }
+
+    this._advanceOnboardingStepIfExpected(user, 5, 6);
+    await user.save();
+    return this.getWorker(workerUserId, companyId);
+  }
+
+  async saveOnboardingTraining(workerUserId, companyId) {
+    const user = await User.findOne({
+      _id: workerUserId,
+      company_id: companyId,
+      role: 'worker',
+    });
+
+    if (!user) {
+      throw new AppError('Worker not found', 404);
+    }
+
+    if (user.status === 'active') {
+      throw new AppError('Training cannot be changed for active workers here', 400);
+    }
+
+    this._advanceOnboardingStepIfExpected(user, 6, 7);
+    await user.save();
     return this.getWorker(workerUserId, companyId);
   }
 

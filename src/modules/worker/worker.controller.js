@@ -55,6 +55,19 @@ class WorkerController {
     }
   }
 
+  async saveOnboardingContract(req, res, next) {
+    try {
+      const worker = await workerService.saveOnboardingContract(
+        req.params.id,
+        req.company_id,
+        req.body
+      );
+      res.json(worker);
+    } catch (error) {
+      next(new AppError(error.message, error.statusCode || 500));
+    }
+  }
+
   async saveOnboardingEmergencyContact(req, res, next) {
     try {
       const worker = await workerService.saveOnboardingEmergencyContact(
@@ -74,6 +87,43 @@ class WorkerController {
         req.params.id,
         req.company_id,
         req.body
+      );
+      res.json(worker);
+    } catch (error) {
+      next(new AppError(error.message, error.statusCode || 500));
+    }
+  }
+
+  async saveOnboardingTimeOff(req, res, next) {
+    try {
+      const worker = await workerService.saveOnboardingTimeOff(
+        req.params.id,
+        req.company_id,
+        req.body
+      );
+      res.json(worker);
+    } catch (error) {
+      next(new AppError(error.message, error.statusCode || 500));
+    }
+  }
+
+  async saveOnboardingDocuments(req, res, next) {
+    try {
+      const worker = await workerService.saveOnboardingDocuments(
+        req.params.id,
+        req.company_id
+      );
+      res.json(worker);
+    } catch (error) {
+      next(new AppError(error.message, error.statusCode || 500));
+    }
+  }
+
+  async saveOnboardingTraining(req, res, next) {
+    try {
+      const worker = await workerService.saveOnboardingTraining(
+        req.params.id,
+        req.company_id
       );
       res.json(worker);
     } catch (error) {
