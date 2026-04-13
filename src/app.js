@@ -76,15 +76,21 @@ app.use('/api/notifications', notificationRoutes);
 app.use(notFoundMiddleware);
 app.use(errorMiddleware);
 
+
+// Health endpoint on /
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
 const startServer = async () => {
   try {
     await connectDB();
     console.log('Database connected successfully');
-    
+
     app.listen(config.port, () => {
       console.log(`Server running on port ${config.port}`);
       console.log(`Environment: ${config.env}`);
-      console.log(`Swagger UI available at http://localhost:${config.port}/api-docs`);
+      // console.log(`Swagger UI available at http://localhost:${config.port}/api-docs`);
     });
   } catch (error) {
     console.error('Failed to start server:', error);
