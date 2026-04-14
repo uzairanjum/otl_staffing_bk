@@ -64,6 +64,8 @@ class WorkerShiftController {
 }
 
 const workerShiftController = new WorkerShiftController();
+router.use(authenticate);
+router.use(requireRole('worker'));
 
 /**
  * @swagger
