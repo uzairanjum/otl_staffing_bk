@@ -73,6 +73,12 @@ const schemas = {
     token: Joi.string().required()
   }),
 
+  adminSendEmail: Joi.object({
+    email: Joi.string().email().required(),
+    subject: Joi.string().trim().min(1).max(200).required(),
+    body: Joi.string().trim().min(1).max(50000).required(),
+  }),
+
   inviteWorker: Joi.object({
     email: Joi.string().email().required(),
     first_name: Joi.string().required(),
@@ -105,6 +111,9 @@ const schemas = {
       country: Joi.string().allow('', null),
     }).required(),
   }),
+  workerOnboardingContract: Joi.object({
+    name: Joi.string().trim().required(),
+  }),
 
   workerOnboardingEmergencyContact: Joi.object({
     contact_name: Joi.string().trim().required(),
@@ -134,6 +143,20 @@ const schemas = {
     account_number: Joi.string().trim().required(),
     routing_number: Joi.string().trim().required(),
   }),
+  workerOnboardingTimeOff: Joi.object({
+    notes: Joi.string().allow('', null),
+    entries: Joi.array()
+      .items(
+        Joi.object({
+          date: Joi.alternatives().try(Joi.date(), Joi.string().isoDate()).required(),
+          from: Joi.string().trim().pattern(/^([01]\d|2[0-3]):([0-5]\d)$/).required(),
+          to: Joi.string().trim().pattern(/^([01]\d|2[0-3]):([0-5]\d)$/).required(),
+        })
+      )
+      .default([]),
+  }),
+  workerOnboardingDocuments: Joi.object({}),
+  workerOnboardingTraining: Joi.object({}),
 
   workerFileUpload: Joi.object({
     file_type: Joi.string()
@@ -227,7 +250,8 @@ const schemas = {
       Joi.object({
         name: Joi.string().required(),
         description: Joi.string().allow(''),
-        status: Joi.string().valid('draft', 'active', 'completed', 'cancelled')
+        location: Joi.string().allow(''),
+        status: Joi.string().valid('active', 'inactive').default('active')
       })
     ).default([])
   }),
@@ -258,7 +282,8 @@ const schemas = {
         id: Joi.string(),
         name: Joi.string().required(),
         description: Joi.string().allow(''),
-        status: Joi.string().valid('draft', 'active', 'completed', 'cancelled')
+        location: Joi.string().allow(''),
+        status: Joi.string().valid('active', 'inactive').default('active')
       })
     ).default([])
   }),
@@ -266,7 +291,9 @@ const schemas = {
   job: Joi.object({
     client_id: Joi.string().required(),
     name: Joi.string().required(),
-    description: Joi.string()
+    description: Joi.string(),
+    location: Joi.string().allow(''),
+    status: Joi.string().valid('active', 'inactive').default('active')
   }),
 
   shift: Joi.object({
@@ -281,6 +308,34 @@ const schemas = {
   shiftPosition: Joi.object({
     company_role_id: Joi.string().required(),
     needed_count: Joi.number().min(1).default(1)
+  }),
+  shiftTemplateCreate: Joi.object({
+    name: Joi.string().trim().required(),
+    positions: Joi.array()
+      .items(
+        Joi.object({
+          company_role_id: Joi.string().required(),
+          needed_count: Joi.number().min(1).required(),
+          pay_rate: Joi.number().min(0).default(0),
+          break_time: Joi.string().allow('').default('No Break'),
+        })
+      )
+      .min(1)
+      .required(),
+  }),
+  shiftTemplateUpdate: Joi.object({
+    name: Joi.string().trim().required(),
+    positions: Joi.array()
+      .items(
+        Joi.object({
+          company_role_id: Joi.string().required(),
+          needed_count: Joi.number().min(1).required(),
+          pay_rate: Joi.number().min(0).default(0),
+          break_time: Joi.string().allow('').default('No Break'),
+        })
+      )
+      .min(1)
+      .required(),
   }),
 
   timeOff: Joi.object({

@@ -2,13 +2,81 @@ const Shift = require('./Shift');
 const ShiftPosition = require('./ShiftPosition');
 const ShiftPositionAssignment = require('./ShiftPositionAssignment');
 const Unassignment = require('./Unassignment');
+const ShiftTemplate = require('./ShiftTemplate');
 const User = require('../../common/models/User');
 const WorkerRole = require('../worker/WorkerRole');
 const TimeOffRequest = require('../worker/TimeOffRequest');
 const Job = require('../job/Job');
+const CompanyRole = require('../company/CompanyRole');
 const { AppError } = require('../../common/middleware/error.middleware');
 
 class ShiftService {
+  async getShiftTemplates(companyId) {
+    return ShiftTemplate.find({ company_id: companyId })
+      .populate('positions.company_role_id')
+      .sort({ createdAt: -1 });
+  }
+
+  async createShiftTemplate(companyId, data) {
+    const roleIds = [...new Set((data.positions || []).map((p) => String(p.company_role_id)))];
+    const roleCount = await CompanyRole.countDocuments({
+      _id: { $in: roleIds },
+      company_id: companyId,
+      is_active: true,
+    });
+    if (roleCount !== roleIds.length) {
+      throw new AppError('One or more positions use invalid company roles', 400);
+    }
+
+    const template = await ShiftTemplate.create({
+      company_id: companyId,
+      name: data.name.trim(),
+      positions: (data.positions || []).map((p) => ({
+        company_role_id: p.company_role_id,
+        needed_count: Number(p.needed_count) || 1,
+        pay_rate: p.pay_rate != null ? Number(p.pay_rate) : 0,
+        break_time: p.break_time || 'No Break',
+      })),
+    });
+
+    return template.populate('positions.company_role_id');
+  }
+
+  async updateShiftTemplate(templateId, companyId, data) {
+    const existing = await ShiftTemplate.findOne({ _id: templateId, company_id: companyId });
+    if (!existing) {
+      throw new AppError('Shift template not found', 404);
+    }
+
+    const roleIds = [...new Set((data.positions || []).map((p) => String(p.company_role_id)))];
+    const roleCount = await CompanyRole.countDocuments({
+      _id: { $in: roleIds },
+      company_id: companyId,
+      is_active: true,
+    });
+    if (roleCount !== roleIds.length) {
+      throw new AppError('One or more positions use invalid company roles', 400);
+    }
+
+    existing.name = data.name.trim();
+    existing.positions = (data.positions || []).map((p) => ({
+      company_role_id: p.company_role_id,
+      needed_count: Number(p.needed_count) || 1,
+      pay_rate: p.pay_rate != null ? Number(p.pay_rate) : 0,
+      break_time: p.break_time || 'No Break',
+    }));
+    await existing.save();
+    return existing.populate('positions.company_role_id');
+  }
+
+  async deleteShiftTemplate(templateId, companyId) {
+    const deleted = await ShiftTemplate.findOneAndDelete({ _id: templateId, company_id: companyId });
+    if (!deleted) {
+      throw new AppError('Shift template not found', 404);
+    }
+    return { message: 'Shift template deleted successfully' };
+  }
+
   async getShifts(companyId, filters = {}) {
     const query = { company_id: companyId };
     if (filters.status) {

@@ -2,6 +2,42 @@ const shiftService = require('./shift.service');
 const { AppError } = require('../../common/middleware/error.middleware');
 
 class ShiftController {
+  async getShiftTemplates(req, res, next) {
+    try {
+      const templates = await shiftService.getShiftTemplates(req.company_id);
+      res.json(templates);
+    } catch (error) {
+      next(new AppError(error.message, error.statusCode || 500));
+    }
+  }
+
+  async createShiftTemplate(req, res, next) {
+    try {
+      const template = await shiftService.createShiftTemplate(req.company_id, req.body);
+      res.status(201).json(template);
+    } catch (error) {
+      next(new AppError(error.message, error.statusCode || 500));
+    }
+  }
+
+  async updateShiftTemplate(req, res, next) {
+    try {
+      const template = await shiftService.updateShiftTemplate(req.params.templateId, req.company_id, req.body);
+      res.json(template);
+    } catch (error) {
+      next(new AppError(error.message, error.statusCode || 500));
+    }
+  }
+
+  async deleteShiftTemplate(req, res, next) {
+    try {
+      const result = await shiftService.deleteShiftTemplate(req.params.templateId, req.company_id);
+      res.json(result);
+    } catch (error) {
+      next(new AppError(error.message, error.statusCode || 500));
+    }
+  }
+
   async getShifts(req, res, next) {
     try {
       const shifts = await shiftService.getShifts(req.company_id, req.query);

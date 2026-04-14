@@ -66,6 +66,11 @@ const { validate, schemas } = require('../../common/middleware/validation.middle
 router.use(authenticate);
 router.use(requireRole('admin'));
 
+router.get('/templates', shiftController.getShiftTemplates);
+router.post('/templates', validate(schemas.shiftTemplateCreate), shiftController.createShiftTemplate);
+router.put('/templates/:templateId', validate(schemas.shiftTemplateUpdate), shiftController.updateShiftTemplate);
+router.delete('/templates/:templateId', shiftController.deleteShiftTemplate);
+
 router.get('/', shiftController.getShifts);
 router.post('/', validate(schemas.shift), shiftController.createShift);
 

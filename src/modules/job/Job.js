@@ -18,10 +18,13 @@ const jobSchema = new mongoose.Schema({
   description: {
     type: String
   },
+  location: {
+    type: String
+  },
   status: {
     type: String,
-    enum: ['draft', 'active', 'completed', 'cancelled'],
-    default: 'draft'
+    enum: ['active', 'inactive'],
+    default: 'active'
   }
 }, {
   timestamps: true
