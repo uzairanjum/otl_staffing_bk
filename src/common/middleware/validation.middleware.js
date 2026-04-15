@@ -297,18 +297,81 @@ const schemas = {
   }),
 
   shift: Joi.object({
+    client_id: Joi.string().required(),
     job_id: Joi.string().required(),
-    name: Joi.string().required(),
+    name: Joi.string().trim().required(),
+    client_rep_id: Joi.string().allow('', null),
     date: Joi.date().required(),
-    start_time: Joi.string().required(),
-    end_time: Joi.string().required(),
-    location: Joi.string()
+    location: Joi.string().allow('', null),
+    status: Joi.string().valid('draft', 'published', 'in_progress', 'completed', 'cancelled').default('draft'),
+    notes: Joi.string().allow('', null),
+    required_approval: Joi.boolean().default(true),
+    positions: Joi.array().items(
+      Joi.object({
+        company_role_id: Joi.string().required(),
+        needed_count: Joi.number().min(1).default(1),
+        pay_rate: Joi.number().min(0).default(0),
+        break_time: Joi.string().allow('').default('No Break'),
+        assignments: Joi.array().items(
+          Joi.object({
+            worker_id: Joi.string().allow('', null),
+            system_start_time: Joi.date().allow(null),
+            system_end_time: Joi.date().allow(null),
+            worker_start_time: Joi.date().allow(null),
+            worker_end_time: Joi.date().allow(null),
+            client_start_time: Joi.date().allow(null),
+            client_end_time: Joi.date().allow(null),
+            status: Joi.string().valid('assigned', 'requested', 'approved', 'rejected', 'unassigned', 'completed').default('assigned')
+          })
+        ).default([])
+      })
+    ).min(1).required()
   }),
+  shiftUpdate: Joi.object({
+    client_id: Joi.string(),
+    job_id: Joi.string(),
+    name: Joi.string().trim(),
+    client_rep_id: Joi.string().allow('', null),
+    date: Joi.date(),
+    location: Joi.string().allow('', null),
+    status: Joi.string().valid('draft', 'published', 'in_progress', 'completed', 'cancelled'),
+    notes: Joi.string().allow('', null),
+    required_approval: Joi.boolean(),
+    positions: Joi.array().items(
+      Joi.object({
+        company_role_id: Joi.string().required(),
+        needed_count: Joi.number().min(1).default(1),
+        pay_rate: Joi.number().min(0).default(0),
+        break_time: Joi.string().allow('').default('No Break'),
+        assignments: Joi.array().items(
+          Joi.object({
+            worker_id: Joi.string().allow('', null),
+            system_start_time: Joi.date().allow(null),
+            system_end_time: Joi.date().allow(null),
+            worker_start_time: Joi.date().allow(null),
+            worker_end_time: Joi.date().allow(null),
+            client_start_time: Joi.date().allow(null),
+            client_end_time: Joi.date().allow(null),
+            status: Joi.string().valid('assigned', 'requested', 'approved', 'rejected', 'unassigned', 'completed').default('assigned')
+          })
+        ).default([])
+      })
+    )
+  }).min(1),
 
   shiftPosition: Joi.object({
     company_role_id: Joi.string().required(),
-    needed_count: Joi.number().min(1).default(1)
+    needed_count: Joi.number().min(1).default(1),
+    pay_rate: Joi.number().min(0).default(0),
+    break_time: Joi.string().allow('').default('No Break')
   }),
+  shiftPositionUpdate: Joi.object({
+    company_role_id: Joi.string(),
+    needed_count: Joi.number().min(1),
+    pay_rate: Joi.number().min(0),
+    break_time: Joi.string().allow(''),
+    status: Joi.string().valid('open', 'partially_filled', 'filled')
+  }).min(1),
   shiftTemplateCreate: Joi.object({
     name: Joi.string().trim().required(),
     positions: Joi.array()

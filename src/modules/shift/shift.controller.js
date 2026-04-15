@@ -83,6 +83,15 @@ class ShiftController {
     }
   }
 
+  async duplicateShift(req, res, next) {
+    try {
+      const shift = await shiftService.duplicateShift(req.params.id, req.company_id);
+      res.status(201).json(shift);
+    } catch (error) {
+      next(new AppError(error.message, error.statusCode || 500));
+    }
+  }
+
   async publishShift(req, res, next) {
     try {
       const shift = await shiftService.publishShift(req.params.id, req.company_id);
@@ -134,7 +143,8 @@ class ShiftController {
         req.params.shiftId,
         req.params.positionId,
         req.params.workerId,
-        req.company_id
+        req.company_id,
+        req.user?._id
       );
       res.json(assignment);
     } catch (error) {
@@ -161,7 +171,7 @@ class ShiftController {
       const assignment = await shiftService.assignWorker(
         req.params.shiftId,
         req.params.positionId,
-        req.body.workerId,
+        req.body.worker_id || req.body.workerId,
         req.company_id,
         req.user._id
       );
@@ -176,7 +186,7 @@ class ShiftController {
       const assignment = await shiftService.unassignWorker(
         req.params.shiftId,
         req.params.positionId,
-        req.body.workerId,
+        req.body.worker_id || req.body.workerId,
         req.company_id,
         'company',
         req.body.reason

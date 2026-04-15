@@ -148,8 +148,9 @@ router.post('/', validate(schemas.shift), shiftController.createShift);
  *         $ref: '#/components/responses/Forbidden'
  */
 router.get('/:id', shiftController.getShift);
-router.put('/:id', shiftController.updateShift);
+router.put('/:id', validate(schemas.shiftUpdate), shiftController.updateShift);
 router.delete('/:id', shiftController.deleteShift);
+router.post('/:id/duplicate', shiftController.duplicateShift);
 
 /**
  * @swagger
@@ -268,7 +269,7 @@ router.post('/:shiftId/positions', validate(schemas.shiftPosition), shiftControl
  *       403:
  *         $ref: '#/components/responses/Forbidden'
  */
-router.put('/:shiftId/positions/:positionId', shiftController.updatePosition);
+router.put('/:shiftId/positions/:positionId', validate(schemas.shiftPositionUpdate), shiftController.updatePosition);
 router.delete('/:shiftId/positions/:positionId', shiftController.deletePosition);
 
 /**

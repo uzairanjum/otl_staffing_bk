@@ -11,24 +11,33 @@ const shiftSchema = new mongoose.Schema({
     ref: 'Job',
     required: true
   },
+  client_id: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Client',
+    required: true
+  },
   name: {
     type: String,
     required: true
+  },
+  client_rep_id: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
   },
   date: {
     type: Date,
     required: true
   },
-  start_time: {
-    type: String,
-    required: true
-  },
-  end_time: {
-    type: String,
-    required: true
-  },
   location: {
     type: String
+  },
+  notes: {
+    type: String,
+    default: ''
+  },
+  required_approval: {
+    type: Boolean,
+    default: true
   },
   status: {
     type: String,
@@ -39,6 +48,8 @@ const shiftSchema = new mongoose.Schema({
   timestamps: true
 });
 
-shiftSchema.index({ company_id: 1, job_id: 1, date: 1 });
+shiftSchema.index({ company_id: 1, date: -1, status: 1 });
+shiftSchema.index({ company_id: 1, client_id: 1, date: -1 });
+shiftSchema.index({ company_id: 1, job_id: 1, date: -1 });
 
 module.exports = mongoose.model('Shift', shiftSchema, 'shifts');
