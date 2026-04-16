@@ -68,7 +68,7 @@ This document shows the Entity-Relationship Diagram (ERD) for the OTL Staffing P
 | `last_name` | String | Last name |
 | `phone` | String | Phone number |
 | `profile_image_url` | String | Profile image URL |
-| `status` | String | invited, signed_contract, in_progress, pending_approval, active, suspended |
+| `status` | String | invited, signed_contract, in_progress, pending_approval, active, inactive |
 | `onboarding_step` | Number | 0-8 onboarding progress |
 | `contract_signed` | Boolean | Contract signed flag |
 | `contract_signed_at` | Date | Contract signed timestamp |

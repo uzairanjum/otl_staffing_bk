@@ -24,6 +24,16 @@ class WorkerController {
     }
   }
 
+  async getActiveWorkersRoleBased(req, res, next) {
+    try {
+      const companyRoleId = req.query.company_role_id;
+      const workers = await workerService.getActiveWorkersRoleBased(req.company_id, companyRoleId);
+      res.json(workers);
+    } catch (error) {
+      next(new AppError(error.message, error.statusCode || 500));
+    }
+  }
+
   async getWorker(req, res, next) {
     try {
       const worker = await workerService.getWorker(req.params.id, req.company_id);
@@ -131,6 +141,18 @@ class WorkerController {
     }
   }
 
+  async completeOnboarding(req, res, next) {
+    try {
+      const worker = await workerService.completeOnboarding(
+        req.params.id,
+        req.company_id
+      );
+      res.json(worker);
+    } catch (error) {
+      next(new AppError(error.message, error.statusCode || 500));
+    }
+  }
+
   async approveWorker(req, res, next) {
     try {
       const worker = await workerService.approveWorker(req.params.id, req.company_id, req.user._id);
@@ -140,9 +162,23 @@ class WorkerController {
     }
   }
 
-  async suspendWorker(req, res, next) {
+  async inactiveWorker(req, res, next) {
     try {
-      const worker = await workerService.suspendWorker(req.params.id, req.company_id);
+      const worker = await workerService.inactiveWorker(req.params.id, req.company_id);
+      res.json(worker);
+    } catch (error) {
+      next(new AppError(error.message, error.statusCode || 500));
+    }
+  }
+
+  // Backward-compatible alias; prefer inactiveWorker.
+  async suspendWorker(req, res, next) {
+    return this.inactiveWorker(req, res, next);
+  }
+
+  async activateWorker(req, res, next) {
+    try {
+      const worker = await workerService.activateWorker(req.params.id, req.company_id, req.user._id);
       res.json(worker);
     } catch (error) {
       next(new AppError(error.message, error.statusCode || 500));
@@ -267,6 +303,32 @@ class WorkerController {
     }
   }
 
+  async getWorkerFileViewUrl(req, res, next) {
+    try {
+      const url = await workerService.getWorkerFileViewUrl(
+        req.params.id,
+        req.company_id,
+        req.params.fileId
+      );
+      res.json({ url });
+    } catch (error) {
+      next(new AppError(error.message, error.statusCode || 500));
+    }
+  }
+
+  async getWorkerTrainingDocumentViewUrl(req, res, next) {
+    try {
+      const url = await workerService.getWorkerTrainingDocumentViewUrl(
+        req.params.id,
+        req.company_id,
+        req.params.docId
+      );
+      res.json({ url });
+    } catch (error) {
+      next(new AppError(error.message, error.statusCode || 500));
+    }
+  }
+
   async getOnboardingStatus(req, res, next) {
     try {
       const status = await workerService.getOnboardingStatus(req.user._id, req.company_id);
@@ -326,6 +388,41 @@ class WorkerController {
     try {
       const timeOffs = await workerService.getWorkerTimeOffs(req.params.id, req.company_id);
       res.json(timeOffs);
+    } catch (error) {
+      next(new AppError(error.message, error.statusCode || 500));
+    }
+  }
+
+  async getMyProfile(req, res, next) {
+    try {
+      const worker = await workerService.getWorker(req.user._id, req.company_id);
+      res.json(worker);
+    } catch (error) {
+      next(new AppError(error.message, error.statusCode || 500));
+    }
+  }
+
+  async getMyWorkerFileViewUrl(req, res, next) {
+    try {
+      const url = await workerService.getWorkerFileViewUrl(
+        req.user._id,
+        req.company_id,
+        req.params.fileId
+      );
+      res.json({ url });
+    } catch (error) {
+      next(new AppError(error.message, error.statusCode || 500));
+    }
+  }
+
+  async getMyTrainingDocumentViewUrl(req, res, next) {
+    try {
+      const url = await workerService.getWorkerTrainingDocumentViewUrl(
+        req.user._id,
+        req.company_id,
+        req.params.docId
+      );
+      res.json({ url });
     } catch (error) {
       next(new AppError(error.message, error.statusCode || 500));
     }

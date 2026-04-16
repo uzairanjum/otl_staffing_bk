@@ -41,7 +41,7 @@ const { validate, schemas } = require('../../common/middleware/validation.middle
  *         name: status
  *         schema:
  *           type: string
- *           enum: [invited, onboarding, pending_approval, active, suspended]
+ *           enum: [invited, onboarding, pending_approval, active, inactive]
  *         description: Filter by worker status
  *       - in: query
  *         name: search
@@ -58,6 +58,39 @@ const { validate, schemas } = require('../../common/middleware/validation.middle
  */
 router.post('/', authenticate, requireRole('admin'), validate(schemas.inviteWorker), workerController.inviteWorker);
 router.get('/', authenticate, requireRole('admin'), workerController.getWorkers);
+
+/**
+ * @swagger
+ * /api/workers/active/role_based:
+ *   get:
+ *     summary: List active workers by role
+ *     description: Get active workers for the company filtered by company_role_id
+ *     tags: [Workers]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: company_role_id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Company role id to filter by
+ *     responses:
+ *       200:
+ *         description: List of active workers for the role
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       403:
+ *         $ref: '#/components/responses/Forbidden'
+ *       400:
+ *         $ref: '#/components/responses/ValidationError'
+ */
+router.get(
+  '/active/role_based',
+  authenticate,
+  requireRole('admin'),
+  workerController.getActiveWorkersRoleBased
+);
 
 /**
  * @swagger
@@ -174,6 +207,13 @@ router.put(
   validate(schemas.workerOnboardingTraining),
   workerController.saveOnboardingTraining
 );
+router.put(
+  '/:id/onboarding/complete',
+  authenticate,
+  requireRole('admin'),
+  validate(schemas.workerOnboardingComplete),
+  workerController.completeOnboarding
+);
 
 /**
  * @swagger
@@ -205,10 +245,10 @@ router.put('/:id/approve', authenticate, requireRole('admin'), workerController.
 
 /**
  * @swagger
- * /api/workers/{id}/suspend:
+ * /api/workers/{id}/inactive:
  *   put:
- *     summary: Suspend worker
- *     description: Suspend an active worker
+ *     summary: Inactivate worker
+ *     description: Mark an active worker as inactive
  *     tags: [Workers]
  *     security:
  *       - bearerAuth: []
@@ -221,7 +261,7 @@ router.put('/:id/approve', authenticate, requireRole('admin'), workerController.
  *         description: Worker ID
  *     responses:
  *       200:
- *         description: Worker suspended successfully
+ *         description: Worker inactivated successfully
  *       401:
  *         $ref: '#/components/responses/Unauthorized'
  *       403:
@@ -229,7 +269,10 @@ router.put('/:id/approve', authenticate, requireRole('admin'), workerController.
  *       404:
  *         $ref: '#/components/responses/NotFound'
  */
+router.put('/:id/inactive', authenticate, requireRole('admin'), workerController.inactiveWorker);
+// Deprecated alias for backward compatibility.
 router.put('/:id/suspend', authenticate, requireRole('admin'), workerController.suspendWorker);
+router.put('/:id/activate', authenticate, requireRole('admin'), workerController.activateWorker);
 
 /**
  * @swagger
@@ -316,6 +359,12 @@ router.delete(
   requireRole('admin'),
   workerController.deleteWorkerFile
 );
+router.get(
+  '/:id/files/:fileId/view-url',
+  authenticate,
+  requireRole('admin'),
+  workerController.getWorkerFileViewUrl
+);
 
 router.post(
   '/:id/training-documents/upload',
@@ -323,6 +372,12 @@ router.post(
   requireRole('admin'),
   uploadWorkerFileSingle,
   workerController.uploadWorkerTrainingDocumentMultipart
+);
+router.get(
+  '/:id/training-documents/:docId/view-url',
+  authenticate,
+  requireRole('admin'),
+  workerController.getWorkerTrainingDocumentViewUrl
 );
 
 /**

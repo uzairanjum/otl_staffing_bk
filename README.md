@@ -122,7 +122,7 @@ Once the server is running:
 - `GET /api/workers` - List workers
 - `GET /api/workers/:id` - Get worker
 - `PUT /api/workers/:id/approve` - Approve worker
-- `PUT /api/workers/:id/suspend` - Suspend worker
+- `PUT /api/workers/:id/inactive` - Mark worker inactive
 
 ### Onboarding (Worker)
 - `GET /api/me/onboarding/status` - Get status

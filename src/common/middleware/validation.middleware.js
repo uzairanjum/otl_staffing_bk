@@ -157,6 +157,7 @@ const schemas = {
   }),
   workerOnboardingDocuments: Joi.object({}),
   workerOnboardingTraining: Joi.object({}),
+  workerOnboardingComplete: Joi.object({}),
 
   workerFileUpload: Joi.object({
     file_type: Joi.string()

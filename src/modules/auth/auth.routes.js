@@ -3,7 +3,7 @@ const router = express.Router();
 const authController = require('./auth.controller');
 const { authenticate, requireFirstLoginChange } = require('../../common/middleware/auth.middleware');
 const { validate, validateQuery, schemas } = require('../../common/middleware/validation.middleware');
-
+ 
 /**
  * @swagger
  * /api/auth/login:

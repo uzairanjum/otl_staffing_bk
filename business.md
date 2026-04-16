@@ -96,7 +96,7 @@ The client rep is the contact person at the client company:
 **Suspending a Worker:**
 1. Navigate to worker's profile
 2. Click "Suspend"
-3. System updates Worker status to `suspended`
+3. System updates Worker status to `inactive`
 4. Worker cannot login or be assigned to new shifts
 
 #### Shift Management Flow
@@ -459,7 +459,7 @@ The onboarding process ensures all required worker information is collected befo
 | GET | `/api/workers/:id` | Get worker details |
 | PUT | `/api/workers/:id` | Update worker |
 | PUT | `/api/workers/:id/approve` | Approve worker |
-| PUT | `/api/workers/:id/suspend` | Suspend worker |
+| PUT | `/api/workers/:id/inactive` | Mark worker inactive |
 | GET | `/api/workers/:id/files` | List worker files |
 | POST | `/api/workers/:id/files` | Upload worker file |
 | DELETE | `/api/workers/files/:fileId` | Delete worker file |
@@ -701,7 +701,7 @@ All models include a `company_id` field that:
 ### 7.1 Worker Lifecycle
 
 ```
-Invited → Onboarding (8 steps) → Pending Approval → Active → Suspended
+Invited → Onboarding (8 steps) → Pending Approval → Active → Inactive
 ```
 
 ### 7.2 Shift Lifecycle

@@ -4,6 +4,30 @@ const workerController = require('./worker.controller');
 const { authenticate, requireRole } = require('../../common/middleware/auth.middleware');
 const { validate, schemas } = require('../../common/middleware/validation.middleware');
 
+// All /api/me routes require an authenticated worker.
+router.use(authenticate);
+router.use(requireRole('worker'));
+
+/**
+ * @swagger
+ * /api/me/profile:
+ *   get:
+ *     summary: Get my profile
+ *     description: Get the authenticated worker profile with related onboarding data
+ *     tags: [Worker Self-Service]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Worker profile payload
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ */
+router.get('/profile', workerController.getMyProfile);
+
+router.get('/files/:fileId/view-url', workerController.getMyWorkerFileViewUrl);
+router.get('/training-documents/:docId/view-url', workerController.getMyTrainingDocumentViewUrl);
+
 /**
  * @swagger
  * /api/me/time-off:

@@ -1,7 +1,7 @@
 const mongoose = require('mongoose');
 const bcrypt = require('bcrypt');
 
-const WORKER_STATUSES = ['invited', 'onboarding', 'pending_approval', 'active', 'suspended'];
+const WORKER_STATUSES = ['invited', 'onboarding', 'pending_approval', 'active', 'inactive'];
 const STAFF_STATUSES = ['active', 'inactive'];
 
 const userSchema = new mongoose.Schema({

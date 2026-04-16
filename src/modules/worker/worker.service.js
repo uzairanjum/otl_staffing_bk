@@ -11,6 +11,7 @@ const WorkerFile = require('./WorkerFile');
 const WorkerEmergencyContact = require('./WorkerEmergencyContact');
 const WorkerTimeOff = require('./WorkerTimeOff');
 const TimeOffRequest = require('./TimeOffRequest');
+const { cloudinary } = require('../../config/cloudinary');
 const { AppError } = require('../../common/middleware/error.middleware');
 const { sendEmailWithTemplate } = require('../../config/email');
 const config = require('../../config');
@@ -320,6 +321,41 @@ class WorkerService {
       ...u,
       worker_roles: roleByWorker.get(String(u._id)) || null,
       worker_trainings: trainByWorker.get(String(u._id)) || null,
+    }));
+  }
+
+  async getActiveWorkersRoleBased(companyId, companyRoleId) {
+    const roleId = String(companyRoleId || '').trim();
+    if (!roleId) {
+      throw new AppError('company_role_id is required', 400);
+    }
+    if (!mongoose.Types.ObjectId.isValid(roleId)) {
+      throw new AppError('Invalid company_role_id', 400);
+    }
+
+    const roleDocs = await WorkerRole.find({
+      company_id: companyId,
+      'roles.company_role_id': roleId,
+    })
+      .select('worker_id')
+      .lean();
+
+    const workerIds = Array.from(new Set(roleDocs.map((d) => String(d.worker_id)).filter(Boolean)));
+    if (workerIds.length === 0) return [];
+
+    const users = await User.find({
+      _id: { $in: workerIds },
+      company_id: companyId,
+      role: 'worker',
+      status: 'active',
+    })
+      .select('_id first_name last_name')
+      .sort({ first_name: 1, last_name: 1 })
+      .lean();
+
+    return users.map((u) => ({
+      id: String(u._id),
+      name: `${u.first_name || ''} ${u.last_name || ''}`.trim(),
     }));
   }
 
@@ -662,7 +698,34 @@ class WorkerService {
       throw new AppError('Training cannot be changed for active workers here', 400);
     }
 
+    // Step 7 is the Review screen. Do not move to pending_approval here.
+    // The worker/admin should only transition to pending_approval when Step 8 is completed.
     this._advanceOnboardingStepIfExpected(user, 6, 7);
+    await user.save();
+    return this.getWorker(workerUserId, companyId);
+  }
+
+  async completeOnboarding(workerUserId, companyId) {
+    const user = await User.findOne({
+      _id: workerUserId,
+      company_id: companyId,
+      role: 'worker',
+    });
+
+    if (!user) {
+      throw new AppError('Worker not found', 404);
+    }
+
+    if (user.status === 'active') {
+      throw new AppError('Onboarding cannot be changed for active workers here', 400);
+    }
+
+    const advanced = this._advanceOnboardingStepIfExpected(user, 7, 8);
+    // Only change onboarding → pending_approval when completing step 8,
+    // and only if the last onboarding_step in DB was exactly 7.
+    if (advanced && user.status === 'onboarding') {
+      user.status = 'pending_approval';
+    }
     await user.save();
     return this.getWorker(workerUserId, companyId);
   }
@@ -727,16 +790,42 @@ class WorkerService {
     return user;
   }
 
-  async suspendWorker(workerUserId, companyId) {
+  async inactiveWorker(workerUserId, companyId) {
     const user = await User.findOneAndUpdate(
       { _id: workerUserId, company_id: companyId, role: 'worker' },
-      { status: 'suspended' },
+      { status: 'inactive' },
       { new: true }
     );
 
     if (!user) {
       throw new AppError('Worker not found', 404);
     }
+
+    return user;
+  }
+
+  // Backward-compatible alias; prefer inactiveWorker.
+  async suspendWorker(workerUserId, companyId) {
+    return this.inactiveWorker(workerUserId, companyId);
+  }
+
+  async activateWorker(workerUserId, companyId, activatedBy) {
+    const user = await User.findOne({
+      _id: workerUserId,
+      company_id: companyId,
+      role: 'worker',
+    });
+
+    if (!user) {
+      throw new AppError('Worker not found', 404);
+    }
+
+    user.status = 'active';
+    if (activatedBy) {
+      user.approved_by = activatedBy;
+    }
+    user.approved_at = new Date();
+    await user.save();
 
     return user;
   }
@@ -753,6 +842,109 @@ class WorkerService {
       };
     }
     return bundle;
+  }
+
+  async getWorkerFileViewUrl(workerUserId, companyId, fileId) {
+    await this.getWorker(workerUserId, companyId);
+
+    if (!mongoose.Types.ObjectId.isValid(fileId)) {
+      throw new AppError('Invalid file id', 400);
+    }
+
+    const bundle = await WorkerFile.findOne({ worker_id: workerUserId });
+    if (!bundle) {
+      throw new AppError('File not found', 404);
+    }
+
+    const sub = bundle.files.id(fileId);
+    if (!sub) {
+      throw new AppError('File not found', 404);
+    }
+
+    const publicId = sub.cloudinary_public_id ? String(sub.cloudinary_public_id).trim() : '';
+    const fileUrl = sub.file_url ? String(sub.file_url).trim() : '';
+    if (!publicId) {
+      if (!fileUrl) throw new AppError('File missing URL', 500);
+      return fileUrl;
+    }
+
+    // Infer delivery params from the stored Cloudinary URL when available.
+    let resource_type = 'image';
+    let format = 'pdf';
+    try {
+      const u = new URL(fileUrl);
+      const parts = u.pathname.split('/').filter(Boolean);
+      const rt = parts[0]; // "image" | "raw" | "video"
+      if (rt === 'raw' || rt === 'image' || rt === 'video') {
+        resource_type = rt;
+      }
+      const last = parts[parts.length - 1] || '';
+      const ext = last.includes('.') ? last.split('.').pop() : '';
+      if (ext) format = ext.toLowerCase();
+    } catch {
+      // If parsing fails, keep defaults.
+    }
+
+    const expires_at = Math.floor(Date.now() / 1000) + 60 * 5; // 5 minutes
+    const signed = cloudinary.utils.private_download_url(publicId, format, {
+      resource_type,
+      type: 'upload',
+      expires_at,
+    });
+    return signed;
+  }
+
+  async getWorkerTrainingDocumentViewUrl(workerUserId, companyId, docId) {
+    await this.getWorker(workerUserId, companyId);
+
+    if (!mongoose.Types.ObjectId.isValid(docId)) {
+      throw new AppError('Invalid document id', 400);
+    }
+
+    const bundle = await WorkerTrainingDocument.findOne({
+      worker_id: workerUserId,
+      company_id: companyId,
+      'documents._id': docId,
+    });
+    if (!bundle) {
+      throw new AppError('Training document not found', 404);
+    }
+
+    const sub = bundle.documents.id(docId);
+    if (!sub) {
+      throw new AppError('Training document not found', 404);
+    }
+
+    const publicId = sub.cloudinary_public_id ? String(sub.cloudinary_public_id).trim() : '';
+    const fileUrl = sub.file_url ? String(sub.file_url).trim() : '';
+    if (!publicId) {
+      if (!fileUrl) throw new AppError('Training document missing URL', 500);
+      return fileUrl;
+    }
+
+    let resource_type = 'image';
+    let format = 'pdf';
+    try {
+      const u = new URL(fileUrl);
+      const parts = u.pathname.split('/').filter(Boolean);
+      const rt = parts[0];
+      if (rt === 'raw' || rt === 'image' || rt === 'video') {
+        resource_type = rt;
+      }
+      const last = parts[parts.length - 1] || '';
+      const ext = last.includes('.') ? last.split('.').pop() : '';
+      if (ext) format = ext.toLowerCase();
+    } catch {
+      /* ignore */
+    }
+
+    const expires_at = Math.floor(Date.now() / 1000) + 60 * 5;
+    const signed = cloudinary.utils.private_download_url(publicId, format, {
+      resource_type,
+      type: 'upload',
+      expires_at,
+    });
+    return signed;
   }
 
   async uploadWorkerFile(workerUserId, companyId, fileData) {
@@ -1012,8 +1204,13 @@ class WorkerService {
 
     if (step < 7) {
       user.onboarding_step = step + 1;
-    } else {
-      user.status = 'pending_approval';
+    } else if (step === 7) {
+      // Treat "step 7" as completing onboarding (moving to step 8).
+      // Only flip status when the DB's current onboarding_step is exactly 7.
+      const advanced = this._advanceOnboardingStepIfExpected(user, 7, 8);
+      if (advanced && user.status === 'onboarding') {
+        user.status = 'pending_approval';
+      }
     }
     await user.save();
 
