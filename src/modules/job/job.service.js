@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const Job = require('./Job');
 const Shift = require('../shift/Shift');
 const { AppError } = require('../../common/middleware/error.middleware');
@@ -58,6 +59,20 @@ class JobService {
   }
 
   async getJobs(companyId, filters = {}) {
+    const leanList = ['1', 'true', 'yes'].includes(String(filters.lean_list || '').toLowerCase());
+    if (leanList && filters.client_id) {
+      const asId = this._maybeObjectId(filters.client_id);
+      if (!asId) return [];
+      const query = {
+        company_id: companyId,
+        client_id: mongoose.Types.ObjectId.createFromHexString(asId),
+      };
+      if (filters.status) query.status = filters.status;
+      const limitRaw = parseInt(filters.limit, 10);
+      const limit = Math.min(Math.max(Number.isFinite(limitRaw) && limitRaw > 0 ? limitRaw : 100, 1), 200);
+      return Job.find(query).select('_id name status').sort({ createdAt: -1 }).limit(limit).lean();
+    }
+
     const isPagedRequest =
       filters.page != null || filters.limit != null || (typeof filters.q === 'string' && filters.q.trim());
 

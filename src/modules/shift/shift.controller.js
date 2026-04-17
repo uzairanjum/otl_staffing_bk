@@ -69,6 +69,7 @@ class ShiftController {
     try {
       const shift = await shiftService.createShift(req.company_id, req.body, {
         summary: req.query?.summary === '1' || req.query?.summary === 'true',
+        actorUserId: req.user?._id,
       });
       res.status(201).json(shift);
     } catch (error) {
@@ -89,6 +90,7 @@ class ShiftController {
     try {
       const shift = await shiftService.updateShift(req.params.id, req.company_id, req.body, {
         summary: req.query?.summary === '1' || req.query?.summary === 'true',
+        actorUserId: req.user?._id,
       });
       res.json(shift);
     } catch (error) {

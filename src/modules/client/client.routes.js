@@ -72,6 +72,12 @@ router.use(requireRole('admin'));
  *           type: integer
  *           minimum: 1
  *           maximum: 50
+ *       - in: query
+ *         name: skip_jobs_count
+ *         schema:
+ *           type: string
+ *           enum: ['1', '0', 'true', 'false']
+ *         description: When 1/true, omit per-client job count lookups for a faster response (dropdown/search use).
  *     responses:
  *       200:
  *         description: Paged clients response
