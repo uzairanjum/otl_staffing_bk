@@ -10,8 +10,40 @@ function toObjectId(id) {
 }
 
 class TrainingService {
-  async getTrainings(companyId) {
-    return Training.find({ company_id: companyId }).sort({ updatedAt: -1 });
+  async getTrainings(companyId, filters = {}) {
+    const isPagedRequest =
+      filters.page != null || filters.limit != null || (typeof filters.q === 'string' && filters.q.trim());
+
+    // Backwards-safe: keep the original array response unless paging/search is requested.
+    if (!isPagedRequest) {
+      return Training.find({ company_id: companyId }).sort({ updatedAt: -1 });
+    }
+
+    const page = Number.isFinite(Number(filters.page)) && Number(filters.page) > 0 ? Number(filters.page) : 1;
+    const requestedLimit =
+      Number.isFinite(Number(filters.limit)) && Number(filters.limit) > 0 ? Number(filters.limit) : 5;
+    const limit = Math.min(Math.max(requestedLimit, 1), 50);
+    const skip = (page - 1) * limit;
+    const q = typeof filters.q === 'string' ? filters.q.trim() : '';
+
+    const escapeRegex = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const searchRegex = q ? new RegExp(escapeRegex(q), 'i') : null;
+
+    const query = { company_id: companyId };
+
+    // Optional "tab" filter to match the UI.
+    if (filters.status_tab === 'active') query.is_active = true;
+    if (filters.status_tab === 'inactive') query.is_active = false;
+
+    if (searchRegex) query.name = searchRegex;
+
+    const [items, totalItems] = await Promise.all([
+      Training.find(query).sort({ updatedAt: -1 }).skip(skip).limit(limit),
+      Training.countDocuments(query),
+    ]);
+    const totalPages = totalItems > 0 ? Math.ceil(totalItems / limit) : 0;
+
+    return { items, page, limit, totalItems, totalPages };
   }
 
   async getInactiveTrainings(companyId) {

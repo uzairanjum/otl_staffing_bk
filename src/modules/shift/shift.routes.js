@@ -71,6 +71,100 @@ router.post('/templates', validate(schemas.shiftTemplateCreate), shiftController
 router.put('/templates/:templateId', validate(schemas.shiftTemplateUpdate), shiftController.updateShiftTemplate);
 router.delete('/templates/:templateId', shiftController.deleteShiftTemplate);
 
+/**
+ * @swagger
+ * /api/shifts/filters:
+ *   get:
+ *     summary: Get shift filter options
+ *     description: Returns global roles, distinct shift locations, and distinct jobs used in shifts for the company
+ *     tags: [Shifts]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Filter options
+ */
+router.get('/filters', shiftController.getShiftFilters);
+
+/**
+ * @swagger
+ * /api/shifts/search:
+ *   get:
+ *     summary: Search shifts (paged)
+ *     description: Search shifts by job/client/location/roles/staff with date-range and sorting
+ *     tags: [Shifts]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: q
+ *         schema:
+ *           type: string
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           maximum: 50
+ *       - in: query
+ *         name: date_from
+ *         schema:
+ *           type: string
+ *           format: date
+ *       - in: query
+ *         name: date_to
+ *         schema:
+ *           type: string
+ *           format: date
+ *       - in: query
+ *         name: sort_by
+ *         schema:
+ *           type: string
+ *           enum: [date, createdAt, updatedAt]
+ *       - in: query
+ *         name: sort_dir
+ *         schema:
+ *           type: string
+ *           enum: [asc, desc]
+ *       - in: query
+ *         name: job_id
+ *         schema:
+ *           type: string
+ *       - in: query
+ *         name: client_id
+ *         schema:
+ *           type: string
+ *       - in: query
+ *         name: location
+ *         schema:
+ *           type: string
+ *       - in: query
+ *         name: role_id
+ *         schema:
+ *           type: string
+ *       - in: query
+ *         name: role_name
+ *         schema:
+ *           type: string
+ *       - in: query
+ *         name: staff_id
+ *         schema:
+ *           type: string
+ *       - in: query
+ *         name: staff_name
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Paginated shifts
+ */
+router.get('/search', shiftController.searchShifts);
+
 router.get('/', shiftController.getShifts);
 router.post('/', validate(schemas.shift), shiftController.createShift);
 

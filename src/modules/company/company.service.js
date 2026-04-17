@@ -27,8 +27,43 @@ class CompanyService {
     return company;
   }
 
-  async getRoles(companyId) {
-    return CompanyRole.find({ company_id: companyId, is_active: true });
+  async getRoles(companyId, filters = {}) {
+    const isPagedRequest =
+      filters.page != null || filters.limit != null || (typeof filters.q === 'string' && filters.q.trim());
+
+    // Backwards-safe: keep the original array response unless paging/search is requested.
+    if (!isPagedRequest) {
+      return CompanyRole.find({ company_id: companyId, is_active: true }).sort({ name: 1 });
+    }
+
+    const page = Number.isFinite(Number(filters.page)) && Number(filters.page) > 0 ? Number(filters.page) : 1;
+    const requestedLimit =
+      Number.isFinite(Number(filters.limit)) && Number(filters.limit) > 0 ? Number(filters.limit) : 5;
+    const limit = Math.min(Math.max(requestedLimit, 1), 50);
+    const skip = (page - 1) * limit;
+    const q = typeof filters.q === 'string' ? filters.q.trim() : '';
+
+    const escapeRegex = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const searchRegex = q ? new RegExp(escapeRegex(q), 'i') : null;
+
+    const query = { company_id: companyId, is_active: true };
+    if (searchRegex) {
+      query.name = searchRegex;
+    }
+
+    const [items, totalItems] = await Promise.all([
+      CompanyRole.find(query).sort({ name: 1 }).skip(skip).limit(limit),
+      CompanyRole.countDocuments(query),
+    ]);
+
+    const totalPages = totalItems > 0 ? Math.ceil(totalItems / limit) : 0;
+    return {
+      items,
+      page,
+      limit,
+      totalItems,
+      totalPages,
+    };
   }
 
   async createRole(companyId, data) {
@@ -228,6 +263,99 @@ class CompanyService {
       upcoming_shifts: upcomingShiftCount,
       total_assignments: assignmentCount,
       paid_payroll_reports: payrollReportCount
+    };
+  }
+
+  async getDashboard(companyId) {
+    const mongoose = require('mongoose');
+    const User = require('../../common/models/User');
+    const Job = require('../job/Job');
+    const Shift = require('../shift/Shift');
+    const WorkerRole = require('../worker/WorkerRole');
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const companyObjectId = new mongoose.Types.ObjectId(companyId);
+
+    const [
+      totalWorkers,
+      activeJobs,
+      pendingShifts,
+      workersByRole,
+      upcomingShifts,
+    ] = await Promise.all([
+      User.countDocuments({ company_id: companyId, role: 'worker' }),
+      Job.countDocuments({ company_id: companyId, status: 'active' }),
+      Shift.countDocuments({ company_id: companyId, status: { $in: ['draft', 'published'] } }),
+      WorkerRole.aggregate([
+        { $match: { company_id: companyObjectId } },
+        { $unwind: { path: '$roles', preserveNullAndEmptyArrays: false } },
+        {
+          $lookup: {
+            from: 'company_roles',
+            localField: 'roles.company_role_id',
+            foreignField: '_id',
+            as: 'role',
+          },
+        },
+        { $unwind: { path: '$role', preserveNullAndEmptyArrays: true } },
+        {
+          $group: {
+            _id: { $ifNull: ['$role.name', 'Unknown'] },
+            count: { $sum: 1 },
+          },
+        },
+        { $sort: { count: -1, _id: 1 } },
+        { $limit: 12 },
+        { $project: { _id: 0, role: '$_id', count: 1 } },
+      ]),
+      Shift.find(
+        { company_id: companyId, status: 'published', date: { $gte: today } },
+        { _id: 1, name: 1, date: 1, start_time: 1, end_time: 1, location: 1, status: 1, job_id: 1 },
+      )
+        .sort({ date: 1 })
+        .limit(5)
+        .lean(),
+    ]);
+
+    // Static parts for now (as requested)
+    const monthlyRevenue = 185000;
+    const revenueChart = [
+      { month: 'Jan', value: 45000 },
+      { month: 'Feb', value: 52000 },
+      { month: 'Mar', value: 48000 },
+      { month: 'Apr', value: 61000 },
+      { month: 'May', value: 55000 },
+      { month: 'Jun', value: 67000 },
+      { month: 'Jul', value: 72000 },
+      { month: 'Aug', value: 69000 },
+    ];
+    const topWorkers = [
+      { name: 'Sarah Johnson', initials: 'SJ', revenue: 2450, hours: 42 },
+      { name: 'Michael Chen', initials: 'MC', revenue: 2280, hours: 38 },
+      { name: 'James Wilson', initials: 'JW', revenue: 2100, hours: 35 },
+      { name: 'Emily Rodriguez', initials: 'ER', revenue: 1890, hours: 32 },
+      { name: 'Lisa Thompson', initials: 'LT', revenue: 1650, hours: 28 },
+    ];
+
+    return {
+      stats: {
+        totalWorkers,
+        activeJobs,
+        pendingApplications: pendingShifts,
+        monthlyRevenue,
+        workersTrend: 12,
+        jobsTrend: 8,
+        applicationsTrend: -5,
+        revenueTrend: 15,
+      },
+      revenue: {
+        monthlyRevenue,
+        chart: revenueChart,
+      },
+      topWorkers,
+      workersByRole,
+      upcomingShifts,
     };
   }
 }
