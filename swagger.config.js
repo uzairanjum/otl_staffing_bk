@@ -13,8 +13,8 @@ const swaggerOptions = {
     },
     servers: [
       {
-        url: 'http://localhost:{port}',
-        description: 'Local development server',
+        url: 'https://clownfish-app-uiydj.ondigitalocean.app',
+        description: 'Production server',
         variables: {
           port: {
             default: '5000'

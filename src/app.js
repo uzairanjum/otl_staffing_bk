@@ -46,6 +46,7 @@ app.get('/health', (req, res) => {
 });
 
 const specs = swaggerJsDoc(swaggerOptions);
+
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(specs, {
   swaggerOptions: {
     persistAuthorization: true,
