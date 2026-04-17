@@ -4,8 +4,17 @@ const { AppError } = require('../../common/middleware/error.middleware');
 class ClientController {
   async getClients(req, res, next) {
     try {
-      const clients = await clientService.getClients(req.company_id);
+      const clients = await clientService.getClients(req.company_id, req.query);
       res.json(clients);
+    } catch (error) {
+      next(new AppError(error.message, error.statusCode || 500));
+    }
+  }
+
+  async searchClients(req, res, next) {
+    try {
+      const result = await clientService.searchClients(req.company_id, req.query);
+      res.json(result);
     } catch (error) {
       next(new AppError(error.message, error.statusCode || 500));
     }

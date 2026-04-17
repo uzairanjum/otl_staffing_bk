@@ -46,6 +46,62 @@ const { validate, schemas } = require('../../common/middleware/validation.middle
 router.use(authenticate);
 router.use(requireRole('admin'));
 
+/**
+ * @swagger
+ * /api/jobs/search:
+ *   get:
+ *     summary: Search jobs (paged)
+ *     description: Search jobs by job name, client, and location with pagination
+ *     tags: [Jobs]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: q
+ *         schema:
+ *           type: string
+ *         description: Search query (job name / client / location)
+ *       - in: query
+ *         name: client_id
+ *         schema:
+ *           type: string
+ *       - in: query
+ *         name: status
+ *         schema:
+ *           type: string
+ *           enum: [draft, active, inactive, completed, cancelled]
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           maximum: 50
+ *     responses:
+ *       200:
+ *         description: Paged jobs response
+ */
+router.get('/search', jobController.searchJobs);
+
+/**
+ * @swagger
+ * /api/jobs/filter:
+ *   get:
+ *     summary: Get job filter options
+ *     description: Get clients and statuses for jobs filters
+ *     tags: [Jobs]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Filter options
+ */
+router.get('/filter', jobController.getJobFilters);
+
 router.get('/', jobController.getJobs);
 router.post('/', validate(schemas.job), jobController.createJob);
 

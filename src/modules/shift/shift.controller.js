@@ -47,9 +47,29 @@ class ShiftController {
     }
   }
 
+  async getShiftFilters(req, res, next) {
+    try {
+      const filters = await shiftService.getShiftFilters(req.company_id);
+      res.json(filters);
+    } catch (error) {
+      next(new AppError(error.message, error.statusCode || 500));
+    }
+  }
+
+  async searchShifts(req, res, next) {
+    try {
+      const result = await shiftService.searchShifts(req.company_id, req.query);
+      res.json(result);
+    } catch (error) {
+      next(new AppError(error.message, error.statusCode || 500));
+    }
+  }
+
   async createShift(req, res, next) {
     try {
-      const shift = await shiftService.createShift(req.company_id, req.body);
+      const shift = await shiftService.createShift(req.company_id, req.body, {
+        summary: req.query?.summary === '1' || req.query?.summary === 'true',
+      });
       res.status(201).json(shift);
     } catch (error) {
       next(new AppError(error.message, error.statusCode || 500));
@@ -67,7 +87,9 @@ class ShiftController {
 
   async updateShift(req, res, next) {
     try {
-      const shift = await shiftService.updateShift(req.params.id, req.company_id, req.body);
+      const shift = await shiftService.updateShift(req.params.id, req.company_id, req.body, {
+        summary: req.query?.summary === '1' || req.query?.summary === 'true',
+      });
       res.json(shift);
     } catch (error) {
       next(new AppError(error.message, error.statusCode || 500));

@@ -38,5 +38,12 @@ const clientSchema = new mongoose.Schema({
 });
 
 clientSchema.index({ company_id: 1 });
+// Single text index used for fast search across name/email/phone within a company.
+clientSchema.index({ company_id: 1, name: 'text', email: 'text', phone: 'text' });
+// Helpful compound indexes for common list/search patterns.
+clientSchema.index({ company_id: 1, createdAt: -1 });
+clientSchema.index({ company_id: 1, email: 1 });
+clientSchema.index({ company_id: 1, phone: 1 });
+clientSchema.index({ company_id: 1, name: 1 });
 
 module.exports = mongoose.model('Client', clientSchema, 'clients');

@@ -4,7 +4,7 @@ const { AppError } = require('../../common/middleware/error.middleware');
 class TrainingController {
   async getTrainings(req, res, next) {
     try {
-      const trainings = await trainingService.getTrainings(req.company_id);
+      const trainings = await trainingService.getTrainings(req.company_id, req.query);
       res.json(trainings);
     } catch (error) {
       next(new AppError(error.message, error.statusCode || 500));

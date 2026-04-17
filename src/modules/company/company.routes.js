@@ -55,6 +55,23 @@ router.put('/', authenticate, validate(schemas.companyUpdate), companyController
  *     tags: [Company]
  *     security:
  *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: q
+ *         schema:
+ *           type: string
+ *         description: Search role names (case-insensitive)
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           maximum: 50
  *     responses:
  *       200:
  *         description: List of roles
@@ -391,6 +408,25 @@ router.delete('/training-categories/:id', authenticate, companyController.delete
  */
 router.get('/working-hours', authenticate, companyController.getWorkingHours);
 router.put('/working-hours', authenticate, companyController.updateWorkingHours);
+
+/**
+ * @swagger
+ * /api/company/dashboard:
+ *   get:
+ *     summary: Get company dashboard data
+ *     description: Fast dashboard payload for the admin dashboard page
+ *     tags: [Company]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Dashboard data
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       403:
+ *         $ref: '#/components/responses/Forbidden'
+ */
+router.get('/dashboard', authenticate, companyController.getDashboard);
 
 /**
  * @swagger
