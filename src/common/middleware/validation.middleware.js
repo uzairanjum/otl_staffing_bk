@@ -252,7 +252,9 @@ const schemas = {
         name: Joi.string().required(),
         description: Joi.string().allow(''),
         location: Joi.string().allow(''),
-        status: Joi.string().valid('active', 'inactive').default('active')
+        status: Joi.string()
+          .valid('draft', 'active', 'inactive', 'completed', 'cancelled')
+          .default('draft')
       })
     ).default([])
   }),
@@ -284,7 +286,9 @@ const schemas = {
         name: Joi.string().required(),
         description: Joi.string().allow(''),
         location: Joi.string().allow(''),
-        status: Joi.string().valid('active', 'inactive').default('active')
+        status: Joi.string()
+          .valid('draft', 'active', 'inactive', 'completed', 'cancelled')
+          .default('draft')
       })
     ).default([])
   }),
@@ -294,7 +298,9 @@ const schemas = {
     name: Joi.string().required(),
     description: Joi.string(),
     location: Joi.string().allow(''),
-    status: Joi.string().valid('active', 'inactive').default('active')
+    status: Joi.string()
+      .valid('draft', 'active', 'inactive', 'completed', 'cancelled')
+      .default('draft')
   }),
 
   shift: Joi.object({
