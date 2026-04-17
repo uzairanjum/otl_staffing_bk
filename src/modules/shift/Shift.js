@@ -28,6 +28,16 @@ const shiftSchema = new mongoose.Schema({
     type: Date,
     required: true
   },
+  // Derived for fast listing: boundaries of any assignments (system_start_time/system_end_time).
+  // Stored to avoid scanning assignments when listing shifts.
+  start_time: {
+    type: Date,
+    default: null,
+  },
+  end_time: {
+    type: Date,
+    default: null,
+  },
   location: {
     type: String
   },

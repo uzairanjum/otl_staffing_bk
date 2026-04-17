@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const Shift = require('./Shift');
 const ShiftPosition = require('./ShiftPosition');
 const ShiftPositionAssignment = require('./ShiftPositionAssignment');
@@ -15,6 +16,114 @@ const ACTIVE_ASSIGNMENT_STATUSES = ['assigned', 'approved', 'completed'];
 let legacyAssignmentIndexChecked = false;
 
 class ShiftService {
+  _parseSort(filters) {
+    const by = typeof filters.sort_by === 'string' ? filters.sort_by : 'date';
+    const dirRaw = typeof filters.sort_dir === 'string' ? filters.sort_dir : 'desc';
+    const dir = dirRaw.toLowerCase() === 'asc' ? 1 : -1;
+    const field = by === 'createdAt' || by === 'updatedAt' || by === 'date' ? by : 'date';
+    return { field, dir };
+  }
+
+  _parsePaging(filters) {
+    const page = Number.isFinite(Number(filters.page)) && Number(filters.page) > 0 ? Number(filters.page) : 1;
+    const requestedLimit =
+      Number.isFinite(Number(filters.limit)) && Number(filters.limit) > 0 ? Number(filters.limit) : 5;
+    const limit = Math.min(Math.max(requestedLimit, 1), 50);
+    const skip = (page - 1) * limit;
+    return { page, limit, skip };
+  }
+
+  _escapeRegex(s) {
+    return String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  }
+
+  _assignmentBoundariesFromInput(positions) {
+    let minStart = null;
+    let maxEnd = null;
+    const pos = Array.isArray(positions) ? positions : [];
+    for (const p of pos) {
+      const assigns = Array.isArray(p?.assignments) ? p.assignments : [];
+      for (const a of assigns) {
+        if (a?.system_start_time) {
+          const t = new Date(a.system_start_time);
+          if (!Number.isNaN(t.getTime())) {
+            if (!minStart || t < minStart) minStart = t;
+          }
+        }
+        if (a?.system_end_time) {
+          const t = new Date(a.system_end_time);
+          if (!Number.isNaN(t.getTime())) {
+            if (!maxEnd || t > maxEnd) maxEnd = t;
+          }
+        }
+      }
+    }
+    return { start_time: minStart, end_time: maxEnd };
+  }
+
+  async _getShiftSummary(shiftId, companyId) {
+    const shift = await Shift.findOne({ _id: shiftId, company_id: companyId })
+      .populate('job_id')
+      .populate('client_id')
+      .populate('client_rep_id');
+    if (!shift) throw new AppError('Shift not found', 404);
+
+    const posDoc = await ShiftPosition.findOne({ company_id: companyId, shift_id: shiftId }).populate(
+      'positions.company_role_id',
+    );
+    const staff_needed = (posDoc?.positions || []).reduce((sum, p) => sum + (p.needed_count || 0), 0);
+    const staff_assigned = (posDoc?.positions || []).reduce((sum, p) => sum + (p.filled_count || 0), 0);
+
+    return {
+      ...shift.toObject(),
+      position_count: posDoc?.positions?.length || 0,
+      staff_needed,
+      staff_assigned,
+      start_time: shift.start_time || null,
+      end_time: shift.end_time || null,
+      positions: (posDoc?.positions || []).map((p) => ({
+        id: p._id,
+        name: p?.company_role_id?.name || '',
+        needed_count: p.needed_count || 1,
+        filled_count: p.filled_count || 0,
+        status: p.status,
+      })),
+      staff: [],
+    };
+  }
+
+  async _decorateListShifts(shifts, companyId) {
+    const shiftIds = shifts.map((s) => s._id);
+    if (shiftIds.length === 0) return [];
+
+    const positionDocs = await ShiftPosition.find({ company_id: companyId, shift_id: { $in: shiftIds } }).populate(
+      'positions.company_role_id',
+    );
+    const posByShiftId = new Map(positionDocs.map((d) => [String(d.shift_id), d]));
+
+    return shifts.map((shift) => {
+      const posDoc = posByShiftId.get(String(shift._id));
+      const staff_needed = (posDoc?.positions || []).reduce((sum, p) => sum + (p.needed_count || 0), 0);
+      const staff_assigned = (posDoc?.positions || []).reduce((sum, p) => sum + (p.filled_count || 0), 0);
+
+      return {
+        ...shift.toObject(),
+        position_count: posDoc?.positions?.length || 0,
+        staff_needed,
+        staff_assigned,
+        start_time: shift.start_time || null,
+        end_time: shift.end_time || null,
+        positions: (posDoc?.positions || []).map((p) => ({
+          id: p._id,
+          name: p?.company_role_id?.name || '',
+          needed_count: p.needed_count || 1,
+          filled_count: p.filled_count || 0,
+          status: p.status,
+        })),
+        staff: [],
+      };
+    });
+  }
   async getShiftTemplates(companyId) {
     return ShiftTemplate.find({ company_id: companyId })
       .populate('positions.company_role_id')
@@ -58,107 +167,581 @@ class ShiftService {
   }
 
   async getShifts(companyId, filters = {}) {
-    const query = { company_id: companyId };
-    if (filters.status) query.status = filters.status;
-    if (filters.job_id) query.job_id = filters.job_id;
-    if (filters.client_id) query.client_id = filters.client_id;
-    if (filters.date_from) query.date = { $gte: new Date(filters.date_from) };
-    if (filters.date_to) query.date = { ...query.date, $lte: new Date(filters.date_to) };
+    const decorate = async (shifts, opts = { includeStaff: true }) => {
+      const shiftIds = shifts.map((s) => s._id);
+      if (shiftIds.length === 0) return [];
 
-    const shifts = await Shift.find(query)
+      const positionDocs = await ShiftPosition.find({ company_id: companyId, shift_id: { $in: shiftIds } }).populate(
+        'positions.company_role_id',
+      );
+      const assignmentDocs = opts.includeStaff
+        ? await ShiftPositionAssignment.find({ company_id: companyId, shift_id: { $in: shiftIds } })
+        : [];
+
+      const activeStatuses = new Set(['assigned', 'approved', 'completed']);
+      const workerMap = new Map();
+      if (opts.includeStaff) {
+        const workerIds = [
+          ...new Set(
+            assignmentDocs
+              .flatMap((doc) => doc.assignments || [])
+              .filter((a) => a.worker_id && activeStatuses.has(a.status))
+              .map((a) => String(a.worker_id)),
+          ),
+        ];
+        const workers =
+          workerIds.length > 0
+            ? await User.find({ _id: { $in: workerIds } }).select('_id first_name last_name')
+            : [];
+        for (const w of workers) workerMap.set(String(w._id), w);
+      }
+
+      const posByShiftId = new Map(positionDocs.map((d) => [String(d.shift_id), d]));
+      const assignmentByShiftId = new Map();
+      if (opts.includeStaff) {
+        for (const doc of assignmentDocs) {
+          const key = String(doc.shift_id);
+          if (!assignmentByShiftId.has(key)) assignmentByShiftId.set(key, []);
+          assignmentByShiftId.get(key).push(doc);
+        }
+      }
+
+      return shifts.map((shift) => {
+        const posDoc = posByShiftId.get(String(shift._id));
+        const docs = opts.includeStaff ? assignmentByShiftId.get(String(shift._id)) || [] : [];
+        const roleByItemId = new Map(
+          (posDoc?.positions || []).map((p) => [String(p._id), p?.company_role_id?.name || '']),
+        );
+
+        let minStart = null;
+        let maxEnd = null;
+        if (opts.includeStaff) {
+          docs.forEach((doc) => {
+            (doc.assignments || []).forEach((a) => {
+              if (a.system_start_time) {
+                const t = new Date(a.system_start_time);
+                if (!minStart || t < minStart) minStart = t;
+              }
+              if (a.system_end_time) {
+                const t = new Date(a.system_end_time);
+                if (!maxEnd || t > maxEnd) maxEnd = t;
+              }
+            });
+          });
+        } else {
+          minStart = shift.start_time || null;
+          maxEnd = shift.end_time || null;
+        }
+
+        const staff = opts.includeStaff
+          ? docs.flatMap((doc) => {
+              const roleName = roleByItemId.get(String(doc.shift_position_item_id)) || '';
+              return (doc.assignments || [])
+                .filter((assignment) => assignment.worker_id && activeStatuses.has(assignment.status))
+                .map((assignment) => {
+                  const worker = workerMap.get(String(assignment.worker_id));
+                  if (!worker) return null;
+                  return {
+                    id: worker._id,
+                    first_name: worker.first_name || '',
+                    last_name: worker.last_name || '',
+                    role: roleName,
+                  };
+                })
+                .filter(Boolean);
+            })
+          : [];
+
+        const staff_needed = (posDoc?.positions || []).reduce((sum, p) => sum + (p.needed_count || 0), 0);
+        const staff_assigned = (posDoc?.positions || []).reduce((sum, p) => sum + (p.filled_count || 0), 0);
+
+        return {
+          ...shift.toObject(),
+          position_count: posDoc?.positions?.length || 0,
+          staff_needed,
+          staff_assigned,
+          start_time: minStart,
+          end_time: maxEnd,
+          positions: (posDoc?.positions || []).map((p) => ({
+            id: p._id,
+            name: p?.company_role_id?.name || '',
+            needed_count: p.needed_count || 1,
+            filled_count: p.filled_count || 0,
+            status: p.status,
+          })),
+          staff,
+        };
+      });
+    };
+
+    const isPagedRequest =
+      filters.page != null || filters.limit != null || (typeof filters.q === 'string' && filters.q.trim());
+
+    if (!isPagedRequest) {
+      const query = { company_id: companyId };
+      if (filters.status) query.status = filters.status;
+      if (filters.job_id) query.job_id = filters.job_id;
+      if (filters.client_id) query.client_id = filters.client_id;
+      if (filters.date_from) query.date = { $gte: new Date(filters.date_from) };
+      if (filters.date_to) query.date = { ...query.date, $lte: new Date(filters.date_to) };
+
+      const shifts = await Shift.find(query)
+        .populate('job_id')
+        .populate('client_id')
+        .populate('client_rep_id')
+        .sort({ date: -1 });
+
+      return decorate(shifts);
+    }
+
+    const { page, limit, skip } = this._parsePaging(filters);
+    const { field: sortField, dir: sortDir } = this._parseSort(filters);
+    const q = typeof filters.q === 'string' ? filters.q.trim() : '';
+
+    const match = { company_id: companyId };
+    if (filters.status) match.status = filters.status;
+    if (filters.job_id) match.job_id = filters.job_id;
+    if (filters.client_id) match.client_id = filters.client_id;
+    if (filters.date_from) match.date = { $gte: new Date(filters.date_from) };
+    if (filters.date_to) match.date = { ...(match.date || {}), $lte: new Date(filters.date_to) };
+
+    const searchRegex = q ? new RegExp(this._escapeRegex(q), 'i') : null;
+
+    const needsAggregation =
+      !!searchRegex ||
+      (typeof filters.tab === 'string' && filters.tab) ||
+      (typeof filters.job === 'string' && filters.job.trim()) ||
+      (typeof filters.role === 'string' && filters.role.trim());
+
+    // Optimized paged list path: avoid aggregation when filters are only on Shift fields.
+    if (!needsAggregation) {
+      const query = { company_id: companyId };
+      if (filters.status) query.status = filters.status;
+      if (filters.job_id) query.job_id = filters.job_id;
+      if (filters.client_id) query.client_id = filters.client_id;
+      if (filters.location) query.location = filters.location;
+      if (filters.date_from) query.date = { $gte: new Date(filters.date_from) };
+      if (filters.date_to) query.date = { ...(query.date || {}), $lte: new Date(filters.date_to) };
+
+      const [totalItems, shifts] = await Promise.all([
+        Shift.countDocuments(query),
+        Shift.find(query)
+          .populate('job_id')
+          .populate('client_id')
+          .populate('client_rep_id')
+          .sort({ [sortField]: sortDir })
+          .skip(skip)
+          .limit(limit),
+      ]);
+      const totalPages = totalItems > 0 ? Math.ceil(totalItems / limit) : 0;
+      const items = await decorate(shifts, { includeStaff: false });
+      return { items, page, limit, totalItems, totalPages };
+    }
+
+    const pipeline = [
+      { $match: match },
+      {
+        $lookup: {
+          from: 'jobs',
+          localField: 'job_id',
+          foreignField: '_id',
+          as: 'job',
+        },
+      },
+      { $unwind: { path: '$job', preserveNullAndEmptyArrays: true } },
+      {
+        $lookup: {
+          from: 'clients',
+          localField: 'client_id',
+          foreignField: '_id',
+          as: 'client',
+        },
+      },
+      { $unwind: { path: '$client', preserveNullAndEmptyArrays: true } },
+      {
+        $lookup: {
+          from: 'shift_positions',
+          let: { shiftId: '$_id' },
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $and: [{ $eq: ['$shift_id', '$$shiftId'] }, { $eq: ['$company_id', companyId] }],
+                },
+              },
+            },
+            { $project: { positions: 1 } },
+          ],
+          as: 'shift_positions',
+        },
+      },
+      { $unwind: { path: '$shift_positions', preserveNullAndEmptyArrays: true } },
+      {
+        $addFields: {
+          staffNeededAgg: {
+            $sum: {
+              $map: {
+                input: { $ifNull: ['$shift_positions.positions', []] },
+                as: 'p',
+                in: { $ifNull: ['$$p.needed_count', 0] },
+              },
+            },
+          },
+          staffAssignedAgg: {
+            $sum: {
+              $map: {
+                input: { $ifNull: ['$shift_positions.positions', []] },
+                as: 'p',
+                in: { $ifNull: ['$$p.filled_count', 0] },
+              },
+            },
+          },
+          roleIdsAgg: {
+            $map: {
+              input: { $ifNull: ['$shift_positions.positions', []] },
+              as: 'p',
+              in: '$$p.company_role_id',
+            },
+          },
+        },
+      },
+      {
+        $lookup: {
+          from: 'company_roles',
+          let: { roleIds: '$roleIdsAgg' },
+          pipeline: [
+            { $match: { $expr: { $in: ['$_id', { $ifNull: ['$$roleIds', []] }] } } },
+            { $project: { name: 1 } },
+          ],
+          as: 'roles',
+        },
+      },
+      {
+        $addFields: {
+          roleNamesAgg: {
+            $map: {
+              input: { $ifNull: ['$roles', []] },
+              as: 'r',
+              in: '$$r.name',
+            },
+          },
+        },
+      },
+    ];
+
+    // Dropdown filters from the UI (string values). These keep existing UI behavior working.
+    if (typeof filters.job === 'string' && filters.job.trim()) {
+      pipeline.push({ $match: { 'job.name': filters.job.trim() } });
+    }
+    if (typeof filters.location === 'string' && filters.location.trim()) {
+      pipeline.push({ $match: { location: filters.location.trim() } });
+    }
+    if (typeof filters.role === 'string' && filters.role.trim()) {
+      pipeline.push({ $match: { roleNamesAgg: filters.role.trim() } });
+    }
+
+    // Status tabs from the UI.
+    if (typeof filters.tab === 'string' && filters.tab) {
+      if (filters.tab === 'published') {
+        pipeline.push({ $match: { status: { $in: ['published', 'in_progress', 'completed'] } } });
+      } else if (filters.tab === 'unpublished') {
+        pipeline.push({ $match: { status: { $nin: ['published', 'in_progress', 'completed'] } } });
+      } else if (filters.tab === 'open') {
+        pipeline.push({ $match: { $expr: { $lt: ['$staffAssignedAgg', '$staffNeededAgg'] } } });
+      } else if (filters.tab === 'assigned') {
+        pipeline.push({ $match: { $expr: { $gte: ['$staffAssignedAgg', '$staffNeededAgg'] } } });
+      }
+    }
+
+    if (searchRegex) {
+      pipeline.push({
+        $match: {
+          $or: [
+            { name: searchRegex },
+            { location: searchRegex },
+            { 'client.name': searchRegex },
+            { 'job.name': searchRegex },
+            { roleNamesAgg: searchRegex },
+          ],
+        },
+      });
+    }
+
+    pipeline.push({ $sort: { [sortField]: sortDir } });
+    pipeline.push({
+      $facet: {
+        items: [{ $skip: skip }, { $limit: limit }, { $project: { _id: 1 } }],
+        total: [{ $count: 'count' }],
+      },
+    });
+
+    const [aggResult] = await Shift.aggregate(pipeline);
+    const rows = Array.isArray(aggResult?.items) ? aggResult.items : [];
+    const totalItems = Number(aggResult?.total?.[0]?.count ?? 0);
+    const totalPages = totalItems > 0 ? Math.ceil(totalItems / limit) : 0;
+    const ids = rows.map((r) => r._id).filter(Boolean);
+
+    if (ids.length === 0) {
+      return { items: [], page, limit, totalItems, totalPages };
+    }
+
+    const shifts = await Shift.find({ _id: { $in: ids }, company_id: companyId })
       .populate('job_id')
       .populate('client_id')
       .populate('client_rep_id')
-      .sort({ date: -1 });
+      .sort({ [sortField]: sortDir });
 
-    const shiftIds = shifts.map((s) => s._id);
-    const [positionDocs, assignmentDocs] = await Promise.all([
-      ShiftPosition.find({ company_id: companyId, shift_id: { $in: shiftIds } }).populate('positions.company_role_id'),
-      ShiftPositionAssignment.find({ company_id: companyId, shift_id: { $in: shiftIds } }),
-    ]);
-
-    const activeStatuses = new Set(['assigned', 'approved', 'completed']);
-    const workerIds = [...new Set(
-      assignmentDocs
-        .flatMap((doc) => (doc.assignments || []))
-        .filter((a) => a.worker_id && activeStatuses.has(a.status))
-        .map((a) => String(a.worker_id))
-    )];
-    const workers = workerIds.length > 0
-      ? await User.find({ _id: { $in: workerIds } }).select('_id first_name last_name')
-      : [];
-    const workerMap = new Map(workers.map((w) => [String(w._id), w]));
-
-    const map = new Map(positionDocs.map((d) => [String(d.shift_id), d]));
-    const assignmentMap = new Map();
-    for (const doc of assignmentDocs) {
-      const key = String(doc.shift_id);
-      if (!assignmentMap.has(key)) assignmentMap.set(key, []);
-      assignmentMap.get(key).push(doc);
-    }
-
-    return shifts.map((shift) => {
-      const posDoc = map.get(String(shift._id));
-      const docs = assignmentMap.get(String(shift._id)) || [];
-      const roleByItemId = new Map(
-        (posDoc?.positions || []).map((p) => [String(p._id), p?.company_role_id?.name || ''])
-      );
-      let minStart = null;
-      let maxEnd = null;
-      docs.forEach((doc) => {
-        (doc.assignments || []).forEach((a) => {
-          if (a.system_start_time) {
-            const t = new Date(a.system_start_time);
-            if (!minStart || t < minStart) minStart = t;
-          }
-          if (a.system_end_time) {
-            const t = new Date(a.system_end_time);
-            if (!maxEnd || t > maxEnd) maxEnd = t;
-          }
-        });
-      });
-
-      const staff = docs.flatMap((doc) => {
-        const roleName = roleByItemId.get(String(doc.shift_position_item_id)) || '';
-        return (doc.assignments || [])
-          .filter((assignment) => assignment.worker_id && activeStatuses.has(assignment.status))
-          .map((assignment) => {
-            const worker = workerMap.get(String(assignment.worker_id));
-            if (!worker) return null;
-            return {
-              id: worker._id,
-              first_name: worker.first_name || '',
-              last_name: worker.last_name || '',
-              role: roleName,
-            };
-          })
-          .filter(Boolean);
-      });
-
-      return {
-        ...shift.toObject(),
-        position_count: posDoc?.positions?.length || 0,
-        staff_needed: (posDoc?.positions || []).reduce((sum, p) => sum + (p.needed_count || 0), 0),
-        staff_assigned: (posDoc?.positions || []).reduce((sum, p) => sum + (p.filled_count || 0), 0),
-        start_time: minStart,
-        end_time: maxEnd,
-        positions: (posDoc?.positions || []).map((p) => ({
-          id: p._id,
-          name: p?.company_role_id?.name || '',
-          needed_count: p.needed_count || 1,
-          filled_count: p.filled_count || 0,
-          status: p.status,
-        })),
-        staff,
-      };
-    });
+    const items = await decorate(shifts, { includeStaff: false });
+    return { items, page, limit, totalItems, totalPages };
   }
 
-  async createShift(companyId, data) {
+  async searchShifts(companyId, filters = {}) {
+    const { page, limit, skip } = this._parsePaging(filters);
+    const { field: sortField, dir: sortDir } = this._parseSort(filters);
+
+    const q = typeof filters.q === 'string' ? filters.q.trim() : '';
+    const searchRegex = q ? new RegExp(this._escapeRegex(q), 'i') : null;
+
+    const match = { company_id: companyId };
+    if (filters.job_id) match.job_id = filters.job_id;
+    if (filters.client_id) match.client_id = filters.client_id;
+    if (filters.location) match.location = filters.location;
+    if (filters.date_from) match.date = { $gte: new Date(filters.date_from) };
+    if (filters.date_to) match.date = { ...(match.date || {}), $lte: new Date(filters.date_to) };
+
+    const roleName = typeof filters.role_name === 'string' ? filters.role_name.trim() : '';
+    const roleId = typeof filters.role_id === 'string' ? filters.role_id.trim() : '';
+    const staffId = typeof filters.staff_id === 'string' ? filters.staff_id.trim() : '';
+    const staffName = typeof filters.staff_name === 'string' ? filters.staff_name.trim() : '';
+
+    const needsJobClientLookup = !!searchRegex;
+    const needsRoleLookup = !!searchRegex || !!roleName || !!roleId;
+    const needsStaffLookup = !!searchRegex || !!staffId || !!staffName;
+
+    const pipeline = [{ $match: match }];
+
+    if (needsJobClientLookup) {
+      pipeline.push(
+        {
+          $lookup: { from: 'jobs', localField: 'job_id', foreignField: '_id', as: 'job' },
+        },
+        { $unwind: { path: '$job', preserveNullAndEmptyArrays: true } },
+        {
+          $lookup: { from: 'clients', localField: 'client_id', foreignField: '_id', as: 'client' },
+        },
+        { $unwind: { path: '$client', preserveNullAndEmptyArrays: true } },
+      );
+    }
+
+    if (needsRoleLookup) {
+      pipeline.push(
+        {
+          $lookup: {
+            from: 'shift_positions',
+            let: { shiftId: '$_id' },
+            pipeline: [
+              {
+                $match: {
+                  $expr: {
+                    $and: [{ $eq: ['$shift_id', '$$shiftId'] }, { $eq: ['$company_id', companyId] }],
+                  },
+                },
+              },
+              { $project: { positions: 1 } },
+            ],
+            as: 'shift_positions',
+          },
+        },
+        { $unwind: { path: '$shift_positions', preserveNullAndEmptyArrays: true } },
+        {
+          $addFields: {
+            roleIdsAgg: {
+              $map: {
+                input: { $ifNull: ['$shift_positions.positions', []] },
+                as: 'p',
+                in: '$$p.company_role_id',
+              },
+            },
+          },
+        },
+        {
+          $lookup: {
+            from: 'company_roles',
+            let: { roleIds: '$roleIdsAgg' },
+            pipeline: [
+              { $match: { $expr: { $in: ['$_id', { $ifNull: ['$$roleIds', []] }] } } },
+              { $project: { name: 1 } },
+            ],
+            as: 'roles',
+          },
+        },
+        {
+          $addFields: {
+            roleNamesAgg: {
+              $map: { input: { $ifNull: ['$roles', []] }, as: 'r', in: '$$r.name' },
+            },
+          },
+        },
+      );
+
+      if (roleId) {
+        try {
+          const oid = new mongoose.Types.ObjectId(roleId);
+          pipeline.push({ $match: { roleIdsAgg: oid } });
+        } catch {
+          // ignore invalid role id
+        }
+      }
+      if (roleName) {
+        pipeline.push({ $match: { roleNamesAgg: roleName } });
+      }
+    }
+
+    if (needsStaffLookup) {
+      // Match worker assignments only when needed.
+      pipeline.push(
+        {
+          $lookup: {
+            from: 'shift_position_assignments',
+            let: { shiftId: '$_id' },
+            pipeline: [
+              {
+                $match: {
+                  $expr: {
+                    $and: [{ $eq: ['$shift_id', '$$shiftId'] }, { $eq: ['$company_id', companyId] }],
+                  },
+                },
+              },
+              { $project: { assignments: 1, shift_position_item_id: 1 } },
+            ],
+            as: 'spa',
+          },
+        },
+        {
+          $addFields: {
+            staffIdsAgg: {
+              $reduce: {
+                input: { $ifNull: ['$spa', []] },
+                initialValue: [],
+                in: {
+                  $setUnion: [
+                    '$$value',
+                    {
+                      $map: {
+                        input: {
+                          $filter: {
+                            input: { $ifNull: ['$$this.assignments', []] },
+                            as: 'a',
+                            cond: {
+                              $and: [
+                                { $ne: ['$$a.worker_id', null] },
+                                { $in: ['$$a.status', ['assigned', 'approved', 'completed']] },
+                              ],
+                            },
+                          },
+                        },
+                        as: 'a',
+                        in: '$$a.worker_id',
+                      },
+                    },
+                  ],
+                },
+              },
+            },
+          },
+        },
+      );
+
+      if (staffId) {
+        try {
+          const oid = new mongoose.Types.ObjectId(staffId);
+          pipeline.push({ $match: { staffIdsAgg: oid } });
+        } catch {
+          // ignore invalid staff id
+        }
+      }
+
+      if (staffName || searchRegex) {
+        pipeline.push(
+          {
+            $lookup: {
+              from: 'users',
+              let: { ids: '$staffIdsAgg' },
+              pipeline: [
+                { $match: { $expr: { $in: ['$_id', { $ifNull: ['$$ids', []] }] } } },
+                { $project: { first_name: 1, last_name: 1 } },
+              ],
+              as: 'staffUsers',
+            },
+          },
+          {
+            $addFields: {
+              staffNamesAgg: {
+                $map: {
+                  input: { $ifNull: ['$staffUsers', []] },
+                  as: 'u',
+                  in: { $trim: { input: { $concat: ['$$u.first_name', ' ', '$$u.last_name'] } } },
+                },
+              },
+            },
+          },
+        );
+      }
+
+      if (staffName) {
+        const staffRegex = new RegExp(this._escapeRegex(staffName), 'i');
+        pipeline.push({ $match: { staffNamesAgg: staffRegex } });
+      }
+    }
+
+    if (searchRegex) {
+      pipeline.push({
+        $match: {
+          $or: [
+            { name: searchRegex },
+            { location: searchRegex },
+            ...(needsJobClientLookup ? [{ 'client.name': searchRegex }, { 'job.name': searchRegex }] : []),
+            ...(needsRoleLookup ? [{ roleNamesAgg: searchRegex }] : []),
+            ...(needsStaffLookup ? [{ staffNamesAgg: searchRegex }] : []),
+          ],
+        },
+      });
+    }
+
+    pipeline.push({ $sort: { [sortField]: sortDir } });
+    pipeline.push({
+      $facet: {
+        items: [{ $skip: skip }, { $limit: limit }, { $project: { _id: 1 } }],
+        total: [{ $count: 'count' }],
+      },
+    });
+
+    const [aggResult] = await Shift.aggregate(pipeline);
+    const rows = Array.isArray(aggResult?.items) ? aggResult.items : [];
+    const totalItems = Number(aggResult?.total?.[0]?.count ?? 0);
+    const totalPages = totalItems > 0 ? Math.ceil(totalItems / limit) : 0;
+    const ids = rows.map((r) => r._id).filter(Boolean);
+
+    if (ids.length === 0) {
+      return { items: [], page, limit, totalItems, totalPages };
+    }
+
+    const shifts = await Shift.find({ _id: { $in: ids }, company_id: companyId })
+      .populate('job_id')
+      .populate('client_id')
+      .populate('client_rep_id')
+      .sort({ [sortField]: sortDir });
+
+    const decorated = await this._decorateListShifts(shifts, companyId);
+    return { items: decorated, page, limit, totalItems, totalPages };
+  }
+
+  async createShift(companyId, data, opts = {}) {
     await this._dropLegacyAssignmentIndexIfExists();
     await this._validateShiftReferences(companyId, data);
     await this._validateRoleIds(companyId, data.positions || []);
 
+    const { start_time, end_time } = this._assignmentBoundariesFromInput(data.positions);
     const shift = await Shift.create({
       company_id: companyId,
       client_id: data.client_id,
@@ -166,6 +749,8 @@ class ShiftService {
       name: data.name,
       client_rep_id: data.client_rep_id || null,
       date: data.date,
+      start_time,
+      end_time,
       location: data.location || '',
       status: data.status || 'draft',
       notes: data.notes || '',
@@ -224,6 +809,9 @@ class ShiftService {
       await ShiftPositionAssignment.insertMany(assignmentDocs);
     }
 
+    if (opts?.summary) {
+      return this._getShiftSummary(shift._id, companyId);
+    }
     return this.getShift(shift._id, companyId);
   }
 
@@ -256,7 +844,7 @@ class ShiftService {
     };
   }
 
-  async updateShift(shiftId, companyId, data) {
+  async updateShift(shiftId, companyId, data, opts = {}) {
     await this._dropLegacyAssignmentIndexIfExists();
     const existingShift = await Shift.findOne({ _id: shiftId, company_id: companyId });
     if (!existingShift) throw new AppError('Shift not found', 404);
@@ -275,6 +863,11 @@ class ShiftService {
 
     const updatePayload = { ...data };
     delete updatePayload.positions;
+    if (Array.isArray(data.positions)) {
+      const { start_time, end_time } = this._assignmentBoundariesFromInput(data.positions);
+      updatePayload.start_time = start_time;
+      updatePayload.end_time = end_time;
+    }
     const shift = await Shift.findOneAndUpdate({ _id: shiftId, company_id: companyId }, updatePayload, {
       new: true,
       runValidators: true,
@@ -337,6 +930,9 @@ class ShiftService {
       }
     }
 
+    if (opts?.summary) {
+      return this._getShiftSummary(shiftId, companyId);
+    }
     return this.getShift(shiftId, companyId);
   }
 
@@ -751,6 +1347,30 @@ class ShiftService {
     } finally {
       legacyAssignmentIndexChecked = true;
     }
+  }
+
+  async getShiftFilters(companyId) {
+    const [roleDocs, locationsRaw, jobIdsRaw] = await Promise.all([
+      CompanyRole.find({ company_id: companyId, is_active: true }).select('_id name').sort({ name: 1 }).lean(),
+      Shift.distinct('location', { company_id: companyId }),
+      Shift.distinct('job_id', { company_id: companyId }),
+    ]);
+
+    const locations = (Array.isArray(locationsRaw) ? locationsRaw : [])
+      .map((l) => (typeof l === 'string' ? l.trim() : ''))
+      .filter(Boolean)
+      .sort((a, b) => a.localeCompare(b));
+
+    const jobIds = (Array.isArray(jobIdsRaw) ? jobIdsRaw : []).filter(Boolean);
+    const jobs = jobIds.length
+      ? await Job.find({ _id: { $in: jobIds }, company_id: companyId }).select('_id name').sort({ name: 1 }).lean()
+      : [];
+
+    return {
+      roles: roleDocs.map((r) => ({ id: String(r._id), name: r.name })),
+      locations,
+      jobs: jobs.map((j) => ({ id: String(j._id), name: j.name })),
+    };
   }
 }
 

@@ -46,6 +46,42 @@ const { validate, schemas } = require('../../common/middleware/validation.middle
 router.use(authenticate);
 router.use(requireRole('admin'));
 
+/**
+ * @swagger
+ * /api/clients/search:
+ *   get:
+ *     summary: Search clients (paged)
+ *     description: Search clients by name/email/contact (phone), with pagination
+ *     tags: [Clients]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: q
+ *         schema:
+ *           type: string
+ *         description: Search query (name/email/phone)
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           maximum: 50
+ *     responses:
+ *       200:
+ *         description: Paged clients response
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       403:
+ *         $ref: '#/components/responses/Forbidden'
+ */
+router.get('/search', clientController.searchClients);
+
 router.get('/', clientController.getClients);
 router.post('/', validate(schemas.client), clientController.createClient);
 router.post('/full', validate(schemas.clientWithDetails), clientController.createClientWithDetails);

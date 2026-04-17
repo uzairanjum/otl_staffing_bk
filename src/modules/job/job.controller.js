@@ -11,6 +11,24 @@ class JobController {
     }
   }
 
+  async searchJobs(req, res, next) {
+    try {
+      const jobs = await jobService.searchJobs(req.company_id, req.query);
+      res.json(jobs);
+    } catch (error) {
+      next(new AppError(error.message, error.statusCode || 500));
+    }
+  }
+
+  async getJobFilters(req, res, next) {
+    try {
+      const filters = await jobService.getJobFilters(req.company_id);
+      res.json(filters);
+    } catch (error) {
+      next(new AppError(error.message, error.statusCode || 500));
+    }
+  }
+
   async createJob(req, res, next) {
     try {
       const job = await jobService.createJob(req.company_id, req.body);

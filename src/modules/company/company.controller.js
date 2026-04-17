@@ -23,7 +23,7 @@ class CompanyController {
 
   async getRoles(req, res, next) {
     try {
-      const roles = await companyService.getRoles(req.company_id);
+      const roles = await companyService.getRoles(req.company_id, req.query);
       res.json(roles);
     } catch (error) {
       next(new AppError(error.message, error.statusCode || 500));
@@ -81,6 +81,15 @@ class CompanyController {
     try {
       const stats = await companyService.getStats(req.company_id);
       res.json(stats);
+    } catch (error) {
+      next(new AppError(error.message, error.statusCode || 500));
+    }
+  }
+
+  async getDashboard(req, res, next) {
+    try {
+      const dashboard = await companyService.getDashboard(req.company_id);
+      res.json(dashboard);
     } catch (error) {
       next(new AppError(error.message, error.statusCode || 500));
     }

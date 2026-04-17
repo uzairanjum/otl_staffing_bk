@@ -13,6 +13,29 @@ const { validate, schemas } = require('../../common/middleware/validation.middle
  *     tags: [Company Training]
  *     security:
  *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: q
+ *         schema:
+ *           type: string
+ *         description: Search training names (case-insensitive)
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           maximum: 50
+ *       - in: query
+ *         name: status_tab
+ *         schema:
+ *           type: string
+ *           enum: [active, inactive]
+ *         description: Filter by active/inactive status
  *     responses:
  *       200:
  *         description: List of training programs

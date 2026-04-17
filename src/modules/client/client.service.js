@@ -9,38 +9,133 @@ const passwordResetTokenService = require('../../common/services/passwordResetTo
 const { v4: uuidv4 } = require('uuid');
 
 class ClientService {
+  _escapeRegex(input) {
+    return input.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  }
   generateTempPassword() {
     return uuidv4().slice(0, 8) + 'A1!';
   }
 
-  async getClients(companyId) {
+  async getClients(companyId, query = {}) {
     if (!companyId) {
       throw new AppError('Company context required', 400);
     }
-    const clients = await Client.find({ company_id: companyId }).sort({ createdAt: -1 });
-    const clientIds = clients.map(client => client._id);
+    // Backward-compatible: if paging/search params provided, return paged object.
+    if (query && (query.q !== undefined || query.page !== undefined || query.limit !== undefined)) {
+      return this.searchClients(companyId, query);
+    }
+    const companyObjectId = new mongoose.Types.ObjectId(companyId);
 
-    const jobCounts = await Job.aggregate([
+    // Single round-trip: clients + jobs_count per client.
+    return Client.aggregate([
+      { $match: { company_id: companyObjectId } },
+      { $sort: { createdAt: -1 } },
       {
-        $match: {
-          company_id: new mongoose.Types.ObjectId(companyId),
-          client_id: { $in: clientIds }
-        }
+        $lookup: {
+          from: 'jobs',
+          let: { clientId: '$_id' },
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $and: [
+                    { $eq: ['$company_id', companyObjectId] },
+                    { $eq: ['$client_id', '$$clientId'] },
+                  ],
+                },
+              },
+            },
+            { $count: 'count' },
+          ],
+          as: 'job_count',
+        },
       },
       {
-        $group: {
-          _id: '$client_id',
-          count: { $sum: 1 }
-        }
-      }
+        $addFields: {
+          jobs_count: { $ifNull: [{ $first: '$job_count.count' }, 0] },
+        },
+      },
+      {
+        $project: {
+          job_count: 0,
+        },
+      },
+    ]);
+  }
+
+  async searchClients(companyId, query = {}) {
+    if (!companyId) {
+      throw new AppError('Company context required', 400);
+    }
+    const q = (query.q || '').toString().trim();
+    const page = Math.max(parseInt(query.page, 10) || 1, 1);
+    const limitRaw = parseInt(query.limit, 10);
+    const limit = Math.min(Math.max(limitRaw || 10, 1), 50);
+    const skip = (page - 1) * limit;
+
+    const companyObjectId = new mongoose.Types.ObjectId(companyId);
+    const match = { company_id: companyObjectId };
+    if (q) {
+      const escaped = this._escapeRegex(q);
+      const rx = new RegExp(escaped, 'i');
+      // Fast + reliable partial matching for email/phone/name (incl. '@' and '.').
+      match.$or = [{ name: rx }, { email: rx }, { phone: rx }];
+    }
+
+    const [result] = await Client.aggregate([
+      { $match: match },
+      { $sort: { createdAt: -1 } },
+      {
+        $facet: {
+          items: [
+            { $skip: skip },
+            { $limit: limit },
+            {
+              $lookup: {
+                from: 'jobs',
+                let: { clientId: '$_id' },
+                pipeline: [
+                  {
+                    $match: {
+                      $expr: {
+                        $and: [
+                          { $eq: ['$company_id', companyObjectId] },
+                          { $eq: ['$client_id', '$$clientId'] },
+                        ],
+                      },
+                    },
+                  },
+                  { $count: 'count' },
+                ],
+                as: 'job_count',
+              },
+            },
+            {
+              $addFields: {
+                jobs_count: { $ifNull: [{ $first: '$job_count.count' }, 0] },
+              },
+            },
+            { $project: { job_count: 0 } },
+          ],
+          totalCount: [{ $count: 'count' }],
+        },
+      },
+      {
+        $project: {
+          items: 1,
+          total: { $ifNull: [{ $first: '$totalCount.count' }, 0] },
+        },
+      },
     ]);
 
-    const jobCountMap = new Map(jobCounts.map(item => [item._id.toString(), item.count]));
-
-    return clients.map(client => ({
-      ...client.toObject(),
-      jobs_count: jobCountMap.get(client._id.toString()) || 0
-    }));
+    const total = result?.total || 0;
+    return {
+      items: result?.items || [],
+      total,
+      page,
+      limit,
+      totalPages: Math.max(Math.ceil(total / limit), 1),
+    };
   }
 
   async createClient(companyId, data) {
