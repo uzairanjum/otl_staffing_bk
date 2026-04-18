@@ -16,6 +16,121 @@ const ACTIVE_ASSIGNMENT_STATUSES = ['assigned', 'approved', 'completed'];
 let legacyAssignmentIndexChecked = false;
 
 class ShiftService {
+  /**
+   * When a slot has a worker, persist who assigned them. Admin create/update payloads often omit
+   * `assigned_by`; use the authenticated user id from the controller (`opts.actorUserId`).
+   */
+  _assignedByForPersistedAssignment(assignmentInput, actorUserId) {
+    const a = assignmentInput || {};
+    if (!a.worker_id) return null;
+    return actorUserId || a.assigned_by || null;
+  }
+
+  async _decorateShiftsWithPositionsAndStaff(shifts, companyId, opts = { includeStaff: true }) {
+    const shiftIds = shifts.map((s) => s._id);
+    if (shiftIds.length === 0) return [];
+
+    const positionDocs = await ShiftPosition.find({ company_id: companyId, shift_id: { $in: shiftIds } }).populate(
+      'positions.company_role_id',
+    );
+    const assignmentDocs = opts.includeStaff
+      ? await ShiftPositionAssignment.find({ company_id: companyId, shift_id: { $in: shiftIds } })
+      : [];
+
+    const activeStatuses = new Set(['assigned', 'approved', 'completed']);
+    const workerMap = new Map();
+    if (opts.includeStaff) {
+      const workerIds = [
+        ...new Set(
+          assignmentDocs
+            .flatMap((doc) => doc.assignments || [])
+            .filter((a) => a.worker_id && activeStatuses.has(a.status))
+            .map((a) => String(a.worker_id)),
+        ),
+      ];
+      const workers =
+        workerIds.length > 0 ? await User.find({ _id: { $in: workerIds } }).select('_id first_name last_name') : [];
+      for (const w of workers) workerMap.set(String(w._id), w);
+    }
+
+    const posByShiftId = new Map(positionDocs.map((d) => [String(d.shift_id), d]));
+    const assignmentByShiftId = new Map();
+    if (opts.includeStaff) {
+      for (const doc of assignmentDocs) {
+        const key = String(doc.shift_id);
+        if (!assignmentByShiftId.has(key)) assignmentByShiftId.set(key, []);
+        assignmentByShiftId.get(key).push(doc);
+      }
+    }
+
+    return shifts.map((shift) => {
+      const posDoc = posByShiftId.get(String(shift._id));
+      const docs = opts.includeStaff ? assignmentByShiftId.get(String(shift._id)) || [] : [];
+      const roleByItemId = new Map(
+        (posDoc?.positions || []).map((p) => [String(p._id), p?.company_role_id?.name || '']),
+      );
+
+      let minStart = null;
+      let maxEnd = null;
+      if (opts.includeStaff) {
+        docs.forEach((doc) => {
+          (doc.assignments || []).forEach((a) => {
+            if (a.system_start_time) {
+              const t = new Date(a.system_start_time);
+              if (!minStart || t < minStart) minStart = t;
+            }
+            if (a.system_end_time) {
+              const t = new Date(a.system_end_time);
+              if (!maxEnd || t > maxEnd) maxEnd = t;
+            }
+          });
+        });
+      } else {
+        minStart = shift.start_time || null;
+        maxEnd = shift.end_time || null;
+      }
+
+      const staff = opts.includeStaff
+        ? docs.flatMap((doc) => {
+            const roleName = roleByItemId.get(String(doc.shift_position_item_id)) || '';
+            return (doc.assignments || [])
+              .filter((assignment) => assignment.worker_id && activeStatuses.has(assignment.status))
+              .map((assignment) => {
+                const worker = workerMap.get(String(assignment.worker_id));
+                if (!worker) return null;
+                return {
+                  id: worker._id,
+                  first_name: worker.first_name || '',
+                  last_name: worker.last_name || '',
+                  role: roleName,
+                };
+              })
+              .filter(Boolean);
+          })
+        : [];
+
+      const staff_needed = (posDoc?.positions || []).reduce((sum, p) => sum + (p.needed_count || 0), 0);
+      const staff_assigned = (posDoc?.positions || []).reduce((sum, p) => sum + (p.filled_count || 0), 0);
+
+      return {
+        ...shift.toObject(),
+        position_count: posDoc?.positions?.length || 0,
+        staff_needed,
+        staff_assigned,
+        start_time: minStart,
+        end_time: maxEnd,
+        positions: (posDoc?.positions || []).map((p) => ({
+          id: p._id,
+          name: p?.company_role_id?.name || '',
+          needed_count: p.needed_count || 1,
+          filled_count: p.filled_count || 0,
+          status: p.status,
+        })),
+        staff,
+      };
+    });
+  }
+
   _parseSort(filters) {
     const by = typeof filters.sort_by === 'string' ? filters.sort_by : 'date';
     const dirRaw = typeof filters.sort_dir === 'string' ? filters.sort_dir : 'desc';
@@ -167,113 +282,6 @@ class ShiftService {
   }
 
   async getShifts(companyId, filters = {}) {
-    const decorate = async (shifts, opts = { includeStaff: true }) => {
-      const shiftIds = shifts.map((s) => s._id);
-      if (shiftIds.length === 0) return [];
-
-      const positionDocs = await ShiftPosition.find({ company_id: companyId, shift_id: { $in: shiftIds } }).populate(
-        'positions.company_role_id',
-      );
-      const assignmentDocs = opts.includeStaff
-        ? await ShiftPositionAssignment.find({ company_id: companyId, shift_id: { $in: shiftIds } })
-        : [];
-
-      const activeStatuses = new Set(['assigned', 'approved', 'completed']);
-      const workerMap = new Map();
-      if (opts.includeStaff) {
-        const workerIds = [
-          ...new Set(
-            assignmentDocs
-              .flatMap((doc) => doc.assignments || [])
-              .filter((a) => a.worker_id && activeStatuses.has(a.status))
-              .map((a) => String(a.worker_id)),
-          ),
-        ];
-        const workers =
-          workerIds.length > 0
-            ? await User.find({ _id: { $in: workerIds } }).select('_id first_name last_name')
-            : [];
-        for (const w of workers) workerMap.set(String(w._id), w);
-      }
-
-      const posByShiftId = new Map(positionDocs.map((d) => [String(d.shift_id), d]));
-      const assignmentByShiftId = new Map();
-      if (opts.includeStaff) {
-        for (const doc of assignmentDocs) {
-          const key = String(doc.shift_id);
-          if (!assignmentByShiftId.has(key)) assignmentByShiftId.set(key, []);
-          assignmentByShiftId.get(key).push(doc);
-        }
-      }
-
-      return shifts.map((shift) => {
-        const posDoc = posByShiftId.get(String(shift._id));
-        const docs = opts.includeStaff ? assignmentByShiftId.get(String(shift._id)) || [] : [];
-        const roleByItemId = new Map(
-          (posDoc?.positions || []).map((p) => [String(p._id), p?.company_role_id?.name || '']),
-        );
-
-        let minStart = null;
-        let maxEnd = null;
-        if (opts.includeStaff) {
-          docs.forEach((doc) => {
-            (doc.assignments || []).forEach((a) => {
-              if (a.system_start_time) {
-                const t = new Date(a.system_start_time);
-                if (!minStart || t < minStart) minStart = t;
-              }
-              if (a.system_end_time) {
-                const t = new Date(a.system_end_time);
-                if (!maxEnd || t > maxEnd) maxEnd = t;
-              }
-            });
-          });
-        } else {
-          minStart = shift.start_time || null;
-          maxEnd = shift.end_time || null;
-        }
-
-        const staff = opts.includeStaff
-          ? docs.flatMap((doc) => {
-              const roleName = roleByItemId.get(String(doc.shift_position_item_id)) || '';
-              return (doc.assignments || [])
-                .filter((assignment) => assignment.worker_id && activeStatuses.has(assignment.status))
-                .map((assignment) => {
-                  const worker = workerMap.get(String(assignment.worker_id));
-                  if (!worker) return null;
-                  return {
-                    id: worker._id,
-                    first_name: worker.first_name || '',
-                    last_name: worker.last_name || '',
-                    role: roleName,
-                  };
-                })
-                .filter(Boolean);
-            })
-          : [];
-
-        const staff_needed = (posDoc?.positions || []).reduce((sum, p) => sum + (p.needed_count || 0), 0);
-        const staff_assigned = (posDoc?.positions || []).reduce((sum, p) => sum + (p.filled_count || 0), 0);
-
-        return {
-          ...shift.toObject(),
-          position_count: posDoc?.positions?.length || 0,
-          staff_needed,
-          staff_assigned,
-          start_time: minStart,
-          end_time: maxEnd,
-          positions: (posDoc?.positions || []).map((p) => ({
-            id: p._id,
-            name: p?.company_role_id?.name || '',
-            needed_count: p.needed_count || 1,
-            filled_count: p.filled_count || 0,
-            status: p.status,
-          })),
-          staff,
-        };
-      });
-    };
-
     const isPagedRequest =
       filters.page != null || filters.limit != null || (typeof filters.q === 'string' && filters.q.trim());
 
@@ -291,7 +299,7 @@ class ShiftService {
         .populate('client_rep_id')
         .sort({ date: -1 });
 
-      return decorate(shifts);
+      return this._decorateShiftsWithPositionsAndStaff(shifts, companyId, { includeStaff: true });
     }
 
     const { page, limit, skip } = this._parsePaging(filters);
@@ -334,7 +342,7 @@ class ShiftService {
           .limit(limit),
       ]);
       const totalPages = totalItems > 0 ? Math.ceil(totalItems / limit) : 0;
-      const items = await decorate(shifts, { includeStaff: false });
+      const items = await this._decorateShiftsWithPositionsAndStaff(shifts, companyId, { includeStaff: false });
       return { items, page, limit, totalItems, totalPages };
     }
 
@@ -491,7 +499,7 @@ class ShiftService {
       .populate('client_rep_id')
       .sort({ [sortField]: sortDir });
 
-    const items = await decorate(shifts, { includeStaff: false });
+    const items = await this._decorateShiftsWithPositionsAndStaff(shifts, companyId, { includeStaff: false });
     return { items, page, limit, totalItems, totalPages };
   }
 
@@ -784,7 +792,7 @@ class ShiftService {
         worker_end_time: a.worker_end_time || null,
         client_start_time: a.client_start_time || null,
         client_end_time: a.client_end_time || null,
-        assigned_by: a.assigned_by || null,
+        assigned_by: this._assignedByForPersistedAssignment(a, opts.actorUserId),
         approved_by: a.approved_by || null,
         approved_at: a.approved_at || null,
         status: a.status || (a.worker_id ? 'assigned' : 'unassigned'),
@@ -827,8 +835,17 @@ class ShiftService {
       ShiftPositionAssignment.find({ company_id: companyId, shift_id: shiftId }),
     ]);
 
-    const workerIds = assignmentDocs.flatMap((doc) => (doc.assignments || []).map((a) => a.worker_id)).filter(Boolean);
-    const workers = await User.find({ _id: { $in: workerIds } }).select('_id first_name last_name email');
+    const workerIds = [
+      ...new Set(
+        assignmentDocs.flatMap((doc) =>
+          (doc.assignments || []).map((a) => a.worker_id).filter((id) => id != null),
+        ),
+      ),
+    ];
+    const workers =
+      workerIds.length > 0
+        ? await User.find({ _id: { $in: workerIds } }).select('_id first_name last_name name email').lean()
+        : [];
     const workerMap = new Map(workers.map((w) => [String(w._id), w]));
 
     return {
@@ -906,7 +923,7 @@ class ShiftService {
           worker_end_time: a.worker_end_time || null,
           client_start_time: a.client_start_time || null,
           client_end_time: a.client_end_time || null,
-          assigned_by: a.assigned_by || null,
+          assigned_by: this._assignedByForPersistedAssignment(a, opts.actorUserId),
           approved_by: a.approved_by || null,
           approved_at: a.approved_at || null,
           status: a.status || (a.worker_id ? 'assigned' : 'unassigned'),
@@ -1225,6 +1242,262 @@ class ShiftService {
     const now = new Date();
     const docs = await this.getWorkerAssignedShifts(workerId, companyId);
     return docs.filter((doc) => doc.shift_id && new Date(doc.shift_id.date) >= now);
+  }
+
+  async getWorkerShiftsCalendar(workerId, companyId, query = {}) {
+    const dateFromRaw = (query.date_from || '').toString().trim();
+    const dateToRaw = (query.date_to || '').toString().trim();
+    const includeParam = query.include;
+    const includeRaw =
+      includeParam === undefined || includeParam === null || String(includeParam).trim() === ''
+        ? 'both'
+        : String(includeParam).trim().toLowerCase();
+
+    if (!dateFromRaw || !dateToRaw) {
+      throw new AppError('date_from and date_to are required', 400);
+    }
+
+    if (!['assigned', 'open', 'both'].includes(includeRaw)) {
+      throw new AppError('include must be one of: assigned, open, both', 400);
+    }
+    const include = includeRaw;
+
+    const from = new Date(dateFromRaw);
+    const to = new Date(dateToRaw);
+    if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) {
+      throw new AppError('Invalid date_from/date_to', 400);
+    }
+    if (from > to) {
+      throw new AppError('date_from must be before or equal to date_to', 400);
+    }
+
+    const shiftIdSet = new Set();
+
+    const collectAssignedIds = async () => {
+      const rows = await ShiftPositionAssignment.aggregate([
+        {
+          $match: {
+            company_id: companyId,
+            assignments: {
+              $elemMatch: {
+                worker_id: workerId,
+                status: { $in: ACTIVE_ASSIGNMENT_STATUSES },
+              },
+            },
+          },
+        },
+        {
+          $lookup: {
+            from: 'shifts',
+            localField: 'shift_id',
+            foreignField: '_id',
+            as: 'shift',
+          },
+        },
+        { $unwind: '$shift' },
+        {
+          $match: {
+            'shift.company_id': companyId,
+            'shift.date': { $gte: from, $lte: to },
+            'shift.status': { $ne: 'draft' },
+          },
+        },
+        { $group: { _id: '$shift_id' } },
+      ]);
+      for (const row of rows) {
+        if (row?._id) shiftIdSet.add(String(row._id));
+      }
+    };
+
+    const collectOpenIds = async () => {
+      const wrDoc = await WorkerRole.findOne({ worker_id: workerId, company_id: companyId }).lean();
+      const roleObjectIds = (wrDoc?.roles || [])
+        .map((r) => r.company_role_id)
+        .filter((id) => id && mongoose.isValidObjectId(String(id)))
+        .map((id) => new mongoose.Types.ObjectId(String(id)));
+
+      if (roleObjectIds.length === 0) return;
+
+      const rows = await ShiftPosition.aggregate([
+        {
+          $match: {
+            company_id: companyId,
+            positions: {
+              $elemMatch: {
+                company_role_id: { $in: roleObjectIds },
+                status: { $in: ['open', 'partially_filled'] },
+              },
+            },
+          },
+        },
+        {
+          $lookup: {
+            from: 'shifts',
+            localField: 'shift_id',
+            foreignField: '_id',
+            as: 'shift',
+          },
+        },
+        { $unwind: '$shift' },
+        {
+          $match: {
+            'shift.company_id': companyId,
+            'shift.status': 'published',
+            'shift.date': { $gte: from, $lte: to },
+          },
+        },
+        { $group: { _id: '$shift_id' } },
+      ]);
+
+      for (const row of rows) {
+        if (row?._id) shiftIdSet.add(String(row._id));
+      }
+    };
+
+    if (include === 'both') {
+      await Promise.all([collectAssignedIds(), collectOpenIds()]);
+    } else if (include === 'assigned') {
+      await collectAssignedIds();
+    } else {
+      await collectOpenIds();
+    }
+
+    const ids = [...shiftIdSet]
+      .filter((id) => mongoose.isValidObjectId(id))
+      .map((id) => new mongoose.Types.ObjectId(id));
+
+    if (ids.length === 0) return [];
+
+    const shifts = await Shift.find({ _id: { $in: ids }, company_id: companyId, date: { $gte: from, $lte: to } })
+      .populate('job_id')
+      .populate('client_id')
+      .populate('client_rep_id')
+      .sort({ date: -1 });
+
+    return this._decorateShiftsWithPositionsAndStaff(shifts, companyId, { includeStaff: true });
+  }
+
+  /**
+   * Whether the worker may load full shift detail (same rules as calendar: assigned on non-draft,
+   * or published open/partial position matching their company roles).
+   */
+  async _workerCanViewShiftDetail(workerId, companyId, shift) {
+    const shiftId = shift._id;
+
+    const assigned = await ShiftPositionAssignment.findOne({
+      company_id: companyId,
+      shift_id: shiftId,
+      assignments: {
+        $elemMatch: {
+          worker_id: workerId,
+          status: { $in: ACTIVE_ASSIGNMENT_STATUSES },
+        },
+      },
+    })
+      .select('_id')
+      .lean();
+    if (assigned) {
+      if (String(shift.status || '') === 'draft') return false;
+      return true;
+    }
+
+    if (String(shift.status || '') !== 'published') return false;
+
+    const wrDoc = await WorkerRole.findOne({ worker_id: workerId, company_id: companyId }).lean();
+    const roleIds = new Set(
+      (wrDoc?.roles || [])
+        .map((r) => r.company_role_id)
+        .filter((id) => id && mongoose.isValidObjectId(String(id)))
+        .map((id) => String(id)),
+    );
+    if (roleIds.size === 0) return false;
+
+    const posDoc = await ShiftPosition.findOne({ company_id: companyId, shift_id: shiftId }).populate(
+      'positions.company_role_id',
+    );
+    if (!posDoc) return false;
+
+    for (const p of posDoc.positions || []) {
+      const rid = String(p.company_role_id?._id || p.company_role_id || '');
+      if (!roleIds.has(rid)) continue;
+      if (['open', 'partially_filled'].includes(p.status)) return true;
+    }
+    return false;
+  }
+
+  /**
+   * Worker portal: only positions whose company_role is on the worker's WorkerRole list, plus any
+   * line where this worker has an active assignment (covers stale role data).
+   */
+  async _filterShiftPayloadForWorkerView(payload, workerId, companyId) {
+    const spRaw = payload.shift_positions;
+    if (!spRaw) return payload;
+
+    const wrDoc = await WorkerRole.findOne({ worker_id: workerId, company_id: companyId }).lean();
+    const allowedRoleIds = new Set(
+      (wrDoc?.roles || [])
+        .map((r) => r.company_role_id)
+        .filter((id) => id != null)
+        .map((id) => String(id)),
+    );
+
+    const spObj =
+      typeof spRaw.toObject === 'function'
+        ? spRaw.toObject({ depopulate: false })
+        : { ...spRaw };
+    const posArr = Array.isArray(spObj.positions) ? spObj.positions : [];
+    const assignmentsArr = Array.isArray(payload.shift_position_assignments)
+      ? payload.shift_position_assignments
+      : [];
+
+    const wid = String(workerId);
+
+    const positionLineId = (p) => String(p._id || p.id || '');
+
+    const positionIncluded = (p) => {
+      const itemId = positionLineId(p);
+      if (!itemId) return false;
+      const crid = String(p.company_role_id?._id || p.company_role_id || '');
+      const roleMatch = allowedRoleIds.size > 0 && allowedRoleIds.has(crid);
+
+      const doc = assignmentsArr.find((d) => String(d.shift_position_item_id) === itemId);
+      const assignedHere =
+        doc &&
+        (doc.assignments || []).some(
+          (a) =>
+            a.worker_id &&
+            String(a.worker_id) === wid &&
+            ACTIVE_ASSIGNMENT_STATUSES.includes(String(a.status || '')),
+        );
+
+      return Boolean(roleMatch || assignedHere);
+    };
+
+    const filteredPos = posArr.filter(positionIncluded);
+    const keptIds = new Set(filteredPos.map((p) => positionLineId(p)).filter(Boolean));
+
+    const filteredAssign = assignmentsArr.filter((d) => keptIds.has(String(d.shift_position_item_id)));
+
+    return {
+      ...payload,
+      shift_positions: { ...spObj, positions: filteredPos },
+      shift_position_assignments: filteredAssign,
+    };
+  }
+
+  /** Full shift payload for worker portal overview (JWT). Same as admin detail, then role-filtered. */
+  async getWorkerShiftDetail(shiftId, workerId, companyId) {
+    if (!mongoose.isValidObjectId(String(shiftId))) {
+      throw new AppError('Invalid shift id', 400);
+    }
+    const shift = await Shift.findOne({ _id: shiftId, company_id: companyId });
+    if (!shift) throw new AppError('Shift not found', 404);
+
+    const allowed = await this._workerCanViewShiftDetail(workerId, companyId, shift);
+    if (!allowed) throw new AppError('Shift not found', 404);
+
+    const full = await this.getShift(shiftId, companyId);
+    return this._filterShiftPayloadForWorkerView(full, workerId, companyId);
   }
 
   async requestShift(shiftId, positionId, workerId, companyId) {
