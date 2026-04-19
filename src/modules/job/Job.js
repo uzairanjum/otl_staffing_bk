@@ -34,6 +34,10 @@ jobSchema.index({ company_id: 1, client_id: 1 });
 jobSchema.index({ company_id: 1, createdAt: -1 });
 jobSchema.index({ company_id: 1, status: 1, createdAt: -1 });
 jobSchema.index({ company_id: 1, client_id: 1, createdAt: -1 });
+/** Client rep jobs list: filter by client + sort by recency */
+jobSchema.index({ company_id: 1, client_id: 1, updatedAt: -1 });
+/** Filtered tabs (status) + sort */
+jobSchema.index({ company_id: 1, client_id: 1, status: 1, updatedAt: -1 });
 jobSchema.index({ company_id: 1, name: 1 });
 jobSchema.index({ company_id: 1, location: 1 });
 

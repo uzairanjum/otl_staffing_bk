@@ -11,6 +11,7 @@ const Job = require('../job/Job');
 const Client = require('../client/Client');
 const CompanyRole = require('../company/CompanyRole');
 const { AppError } = require('../../common/middleware/error.middleware');
+const { filterResponseCache } = require('../../common/utils/filter-response-cache');
 
 const ACTIVE_ASSIGNMENT_STATUSES = ['assigned', 'approved', 'completed'];
 let legacyAssignmentIndexChecked = false;
@@ -64,6 +65,8 @@ class ShiftService {
     }
 
     return shifts.map((shift) => {
+      const base =
+        shift && typeof shift.toObject === 'function' ? shift.toObject() : { ...(shift || {}) };
       const posDoc = posByShiftId.get(String(shift._id));
       const docs = opts.includeStaff ? assignmentByShiftId.get(String(shift._id)) || [] : [];
       const roleByItemId = new Map(
@@ -113,7 +116,7 @@ class ShiftService {
       const staff_assigned = (posDoc?.positions || []).reduce((sum, p) => sum + (p.filled_count || 0), 0);
 
       return {
-        ...shift.toObject(),
+        ...base,
         position_count: posDoc?.positions?.length || 0,
         staff_needed,
         staff_assigned,
@@ -312,24 +315,55 @@ class ShiftService {
     if (filters.client_id) match.client_id = filters.client_id;
     if (filters.date_from) match.date = { $gte: new Date(filters.date_from) };
     if (filters.date_to) match.date = { ...(match.date || {}), $lte: new Date(filters.date_to) };
+    if (typeof filters.location === 'string' && filters.location.trim()) {
+      match.location = filters.location.trim();
+    }
+
+    // Resolve dropdown filters to indexed Shift fields so we avoid scanning all shifts in aggregation.
+    const jobNameStr = typeof filters.job === 'string' ? filters.job.trim() : '';
+    if (jobNameStr && !match.job_id && !jobNameStr.startsWith('All ')) {
+      const jdoc = await Job.findOne({ company_id: companyId, name: jobNameStr }).select('_id').lean();
+      if (!jdoc) {
+        return { items: [], page, limit, totalItems: 0, totalPages: 0 };
+      }
+      match.job_id = jdoc._id;
+    }
+
+    const roleNameStr = typeof filters.role === 'string' ? filters.role.trim() : '';
+    if (roleNameStr && !roleNameStr.startsWith('All ')) {
+      const cr = await CompanyRole.findOne({ company_id: companyId, name: roleNameStr }).select('_id').lean();
+      if (!cr) {
+        return { items: [], page, limit, totalItems: 0, totalPages: 0 };
+      }
+      const roleShiftIds = await ShiftPosition.distinct('shift_id', {
+        company_id: companyId,
+        'positions.company_role_id': cr._id,
+      });
+      if (!roleShiftIds.length) {
+        return { items: [], page, limit, totalItems: 0, totalPages: 0 };
+      }
+      if (match._id && match._id.$in) {
+        const allowed = new Set(roleShiftIds.map((id) => String(id)));
+        const inter = match._id.$in.filter((id) => allowed.has(String(id)));
+        if (!inter.length) {
+          return { items: [], page, limit, totalItems: 0, totalPages: 0 };
+        }
+        match._id = { $in: inter };
+      } else {
+        match._id = { $in: roleShiftIds };
+      }
+    }
 
     const searchRegex = q ? new RegExp(this._escapeRegex(q), 'i') : null;
 
-    const needsAggregation =
-      !!searchRegex ||
-      (typeof filters.tab === 'string' && filters.tab) ||
-      (typeof filters.job === 'string' && filters.job.trim()) ||
-      (typeof filters.role === 'string' && filters.role.trim());
+    const tabKey = typeof filters.tab === 'string' ? filters.tab.trim() : '';
+    const needsTabAggregation = tabKey && tabKey !== 'all';
+
+    const needsAggregation = !!searchRegex || needsTabAggregation;
 
     // Optimized paged list path: avoid aggregation when filters are only on Shift fields.
     if (!needsAggregation) {
-      const query = { company_id: companyId };
-      if (filters.status) query.status = filters.status;
-      if (filters.job_id) query.job_id = filters.job_id;
-      if (filters.client_id) query.client_id = filters.client_id;
-      if (filters.location) query.location = filters.location;
-      if (filters.date_from) query.date = { $gte: new Date(filters.date_from) };
-      if (filters.date_to) query.date = { ...(query.date || {}), $lte: new Date(filters.date_to) };
+      const query = { ...match };
 
       const [totalItems, shifts] = await Promise.all([
         Shift.countDocuments(query),
@@ -437,16 +471,7 @@ class ShiftService {
       },
     ];
 
-    // Dropdown filters from the UI (string values). These keep existing UI behavior working.
-    if (typeof filters.job === 'string' && filters.job.trim()) {
-      pipeline.push({ $match: { 'job.name': filters.job.trim() } });
-    }
-    if (typeof filters.location === 'string' && filters.location.trim()) {
-      pipeline.push({ $match: { location: filters.location.trim() } });
-    }
-    if (typeof filters.role === 'string' && filters.role.trim()) {
-      pipeline.push({ $match: { roleNamesAgg: filters.role.trim() } });
-    }
+    // Job / location / role dropdowns are applied via indexed fields on `match` above (resolved before aggregation).
 
     // Status tabs from the UI.
     if (typeof filters.tab === 'string' && filters.tab) {
@@ -522,8 +547,42 @@ class ShiftService {
     const staffId = typeof filters.staff_id === 'string' ? filters.staff_id.trim() : '';
     const staffName = typeof filters.staff_name === 'string' ? filters.staff_name.trim() : '';
 
+    /** Narrow to shift ids by role *before* aggregation when we are not doing full-text search on roles. */
+    let rolePrefiltered = false;
+    if (roleName && !searchRegex) {
+      const cr = await CompanyRole.findOne({ company_id: companyId, name: roleName }).select('_id').lean();
+      if (!cr) {
+        return { items: [], page, limit, totalItems: 0, totalPages: 0 };
+      }
+      const sids = await ShiftPosition.distinct('shift_id', {
+        company_id: companyId,
+        'positions.company_role_id': cr._id,
+      });
+      if (!sids.length) {
+        return { items: [], page, limit, totalItems: 0, totalPages: 0 };
+      }
+      match._id = { $in: sids };
+      rolePrefiltered = true;
+    } else if (roleId && !searchRegex) {
+      try {
+        const oid = new mongoose.Types.ObjectId(roleId);
+        const sids = await ShiftPosition.distinct('shift_id', {
+          company_id: companyId,
+          'positions.company_role_id': oid,
+        });
+        if (!sids.length) {
+          return { items: [], page, limit, totalItems: 0, totalPages: 0 };
+        }
+        match._id = { $in: sids };
+        rolePrefiltered = true;
+      } catch {
+        // invalid role id — fall through; pipeline may still apply other filters
+      }
+    }
+
     const needsJobClientLookup = !!searchRegex;
-    const needsRoleLookup = !!searchRegex || !!roleName || !!roleId;
+    const needsRoleLookup =
+      !!searchRegex || (!!roleName && !rolePrefiltered) || (!!roleId && !rolePrefiltered);
     const needsStaffLookup = !!searchRegex || !!staffId || !!staffName;
 
     const pipeline = [{ $match: match }];
@@ -592,7 +651,7 @@ class ShiftService {
         },
       );
 
-      if (roleId) {
+      if (roleId && !rolePrefiltered) {
         try {
           const oid = new mongoose.Types.ObjectId(roleId);
           pipeline.push({ $match: { roleIdsAgg: oid } });
@@ -600,7 +659,7 @@ class ShiftService {
           // ignore invalid role id
         }
       }
-      if (roleName) {
+      if (roleName && !rolePrefiltered) {
         pipeline.push({ $match: { roleNamesAgg: roleName } });
       }
     }
@@ -1377,6 +1436,117 @@ class ShiftService {
     return this._decorateShiftsWithPositionsAndStaff(shifts, companyId, { includeStaff: true });
   }
 
+  _toObjectId(id) {
+    if (id == null) return null;
+    const raw = id && id._id ? id._id : id;
+    if (!mongoose.isValidObjectId(raw)) return null;
+    return new mongoose.Types.ObjectId(String(raw));
+  }
+
+  /** ObjectIds for User._id and optional linked ClientRepresentative id (same person, alternate refs). */
+  _repIdsObjectIdsForClientRepUser(user) {
+    const repIdSet = new Set();
+    repIdSet.add(String(user._id));
+    if (user.client_rep_id) {
+      const crId = user.client_rep_id._id ? user.client_rep_id._id : user.client_rep_id;
+      if (crId) repIdSet.add(String(crId));
+    }
+    return [...repIdSet]
+      .filter((id) => mongoose.isValidObjectId(id))
+      .map((id) => new mongoose.Types.ObjectId(id));
+  }
+
+  _clientRepIdMatchClause(user) {
+    const repIds = this._repIdsObjectIdsForClientRepUser(user);
+    return repIds.length === 1 ? repIds[0] : { $in: repIds };
+  }
+
+  /**
+   * Full shift detail for client portal (same payload as admin `getShift`) after access check.
+   */
+  async getClientRepShiftDetail(shiftId, user, companyId) {
+    const companyOid = this._toObjectId(companyId);
+    if (!companyOid) {
+      throw new AppError('Invalid company context', 400);
+    }
+    const sid = this._toObjectId(shiftId);
+    if (!sid) {
+      throw new AppError('Invalid shift id', 400);
+    }
+    const repClause = this._clientRepIdMatchClause(user);
+    const allowed = await Shift.findOne({
+      _id: sid,
+      company_id: companyOid,
+      client_rep_id: repClause,
+    })
+      .select('_id')
+      .lean();
+    if (!allowed) {
+      throw new AppError('Shift not found', 404);
+    }
+    return this.getShift(sid, companyOid);
+  }
+
+  /**
+   * Client portal: shifts where the logged-in user is the designated representative.
+   * Matches `shift.client_rep_id` to the rep's User id and/or linked ClientRepresentative id.
+   * Does not require `user.client_id` — many client_rep accounts only have `company_id` + role;
+   * access is still scoped by company and designated rep on each shift.
+   */
+  async getClientRepShiftsCalendar(user, companyId, query = {}) {
+    const dateFromRaw = (query.date_from || '').toString().trim();
+    const dateToRaw = (query.date_to || '').toString().trim();
+
+    if (!dateFromRaw || !dateToRaw) {
+      throw new AppError('date_from and date_to are required', 400);
+    }
+
+    // Inclusive UTC calendar days for YYYY-MM-DD (covers whole last day, not only midnight)
+    const from = new Date(`${dateFromRaw}T00:00:00.000Z`);
+    const to = new Date(`${dateToRaw}T23:59:59.999Z`);
+    if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) {
+      throw new AppError('Invalid date_from/date_to', 400);
+    }
+    if (from > to) {
+      throw new AppError('date_from must be before or equal to date_to', 400);
+    }
+
+    const MAX_RANGE_DAYS = 400;
+    const rangeMs = to.getTime() - from.getTime();
+    if (rangeMs < 0 || rangeMs > MAX_RANGE_DAYS * 86400000) {
+      throw new AppError(`date range must be between 0 and ${MAX_RANGE_DAYS} days`, 400);
+    }
+
+    const repClause = this._clientRepIdMatchClause(user);
+
+    const companyOid = this._toObjectId(companyId);
+    if (!companyOid) {
+      throw new AppError('Invalid company context', 400);
+    }
+
+    // Do not filter by shift.client_id here: it must match the designated rep, but user.client_id
+    // can be missing or out of sync with legacy shift rows while company_id + client_rep_id are correct.
+    const match = {
+      company_id: companyOid,
+      client_rep_id: repClause,
+      date: { $gte: from, $lte: to },
+      status: { $ne: 'cancelled' },
+    };
+
+    const shifts = await Shift.find(match)
+      .populate({ path: 'job_id', select: 'name' })
+      .populate({ path: 'client_id', select: 'name' })
+      .populate({ path: 'client_rep_id', select: 'first_name last_name name email' })
+      .sort({ date: 1 })
+      .lean();
+
+    if (!shifts.length) {
+      return [];
+    }
+
+    return this._decorateShiftsWithPositionsAndStaff(shifts, companyId, { includeStaff: true });
+  }
+
   /**
    * Whether the worker may load full shift detail (same rules as calendar: assigned on non-draft,
    * or published open/partial position matching their company roles).
@@ -1644,6 +1814,122 @@ class ShiftService {
       locations,
       jobs: jobs.map((j) => ({ id: String(j._id), name: j.name })),
     };
+  }
+
+  /**
+   * Jobs that appear on at least one company shift — search + pagination for admin filters.
+   */
+  async getShiftJobsPaged(companyId, filters = {}) {
+    const page = Number.isFinite(Number(filters.page)) && Number(filters.page) > 0 ? Number(filters.page) : 1;
+    const requestedLimit =
+      Number.isFinite(Number(filters.limit)) && Number(filters.limit) > 0 ? Number(filters.limit) : 5;
+    const limit = Math.min(Math.max(requestedLimit, 1), 50);
+    const qRaw = typeof filters.q === 'string' ? filters.q.trim() : '';
+    const cacheKey = filterResponseCache.makeKey('shiftFilters:jobs', companyId, { q: qRaw, page, limit });
+    const cached = filterResponseCache.get(cacheKey);
+    if (cached !== undefined) return cached;
+
+    const escapeRegex = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const searchRegex = qRaw ? new RegExp(escapeRegex(qRaw), 'i') : null;
+    const skip = (page - 1) * limit;
+
+    const companyOid =
+      mongoose.Types.ObjectId.isValid(companyId) && String(companyId).length === 24
+        ? mongoose.Types.ObjectId.createFromHexString(String(companyId))
+        : companyId;
+
+    // Indexed distinct — avoids scanning every shift into a $group + $lookup pipeline.
+    const jobIdsRaw = await Shift.distinct('job_id', {
+      company_id: companyOid,
+      job_id: { $exists: true, $ne: null },
+    });
+    const jobIds = (Array.isArray(jobIdsRaw) ? jobIdsRaw : []).filter(Boolean);
+    if (!jobIds.length) {
+      return { items: [], page, limit, totalItems: 0, totalPages: 0 };
+    }
+
+    const jobQuery = { _id: { $in: jobIds }, company_id: companyOid };
+    if (searchRegex) {
+      jobQuery.name = searchRegex;
+    }
+
+    const [rows, totalItems] = await Promise.all([
+      Job.find(jobQuery).select('_id name').sort({ name: 1 }).skip(skip).limit(limit).lean(),
+      Job.countDocuments(jobQuery),
+    ]);
+
+    const totalPages = totalItems > 0 ? Math.ceil(totalItems / limit) : 0;
+    const result = {
+      items: rows.map((j) => ({
+        id: String(j._id),
+        value: j.name,
+        label: j.name,
+      })),
+      page,
+      limit,
+      totalItems,
+      totalPages,
+    };
+    filterResponseCache.set(cacheKey, result);
+    return result;
+  }
+
+  /**
+   * Distinct shift locations for the company, with optional substring search and pagination.
+   */
+  async getShiftLocationsPaged(companyId, filters = {}) {
+    const page = Number.isFinite(Number(filters.page)) && Number(filters.page) > 0 ? Number(filters.page) : 1;
+    const requestedLimit =
+      Number.isFinite(Number(filters.limit)) && Number(filters.limit) > 0 ? Number(filters.limit) : 5;
+    const limit = Math.min(Math.max(requestedLimit, 1), 50);
+    const qRaw = typeof filters.q === 'string' ? filters.q.trim().toLowerCase() : '';
+    const cacheKey = filterResponseCache.makeKey('shiftFilters:locations', companyId, {
+      q: qRaw,
+      page,
+      limit,
+    });
+    const cached = filterResponseCache.get(cacheKey);
+    if (cached !== undefined) return cached;
+
+    const skip = (page - 1) * limit;
+
+    const companyOid =
+      mongoose.Types.ObjectId.isValid(companyId) && String(companyId).length === 24
+        ? mongoose.Types.ObjectId.createFromHexString(String(companyId))
+        : companyId;
+
+    // Single distinct pass (uses company_id + location index); unique location count is usually small.
+    const locationsRaw = await Shift.distinct('location', {
+      company_id: companyOid,
+      location: { $type: 'string', $nin: [null, ''] },
+    });
+    let rows = (Array.isArray(locationsRaw) ? locationsRaw : [])
+      .map((l) => (typeof l === 'string' ? l.trim() : ''))
+      .filter(Boolean)
+      .sort((a, b) => a.localeCompare(b));
+
+    if (qRaw) {
+      rows = rows.filter((l) => l.toLowerCase().includes(qRaw));
+    }
+
+    const totalItems = rows.length;
+    const totalPages = totalItems > 0 ? Math.ceil(totalItems / limit) : 0;
+    const slice = rows.slice(skip, skip + limit);
+    const items = slice.map((location) => ({
+      id: location,
+      value: location,
+      label: location,
+    }));
+
+    const result = {
+      items,
+      page,
+      limit,
+      totalItems,
+      totalPages,
+    };
+    filterResponseCache.set(cacheKey, result);
+    return result;
   }
 }
 

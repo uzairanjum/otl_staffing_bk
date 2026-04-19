@@ -22,6 +22,7 @@ const clientRoutes = require('./modules/client/client.routes');
 const jobRoutes = require('./modules/job/job.routes');
 const shiftRoutes = require('./modules/shift/shift.routes');
 const workerShiftsRoutes = require('./modules/shift/worker.shifts.routes');
+const clientRepShiftsRoutes = require('./modules/shift/clientrep.shifts.routes');
 const payrollRoutes = require('./modules/payroll/payroll.routes');
 const reviewRoutes = require('./modules/review/review.routes');
 const notificationRoutes = require('./modules/notification/notification.routes');
@@ -62,15 +63,19 @@ app.use('/api/auth', authRoutes);
 app.use('/api/company', companyRoutes);
 app.use('/api/workers', workerRoutes);
 app.use('/api/me/onboarding', workerOnboardingRoutes);
+// These MUST be registered before `app.use('/api/me', workerSelfRoutes)`.
+// Otherwise `/api/me/clientrep/*` (and `/api/me/shifts/*`, `/api/me/payroll/*`) match the generic
+// `/api/me` mount first and hit `requireRole('worker')`, returning 403 for client_rep users.
+app.use('/api/me/shifts', workerShiftsRoutes);
+app.use('/api/me/clientrep', clientRepShiftsRoutes);
+app.use('/api/me/payroll', payrollRoutes);
 app.use('/api/me', workerSelfRoutes);
 app.use('/api/workers/trainings', workerTrainingRoutes);
 app.use('/api/company/training', trainingRoutes);
 app.use('/api/clients', clientRoutes);
 app.use('/api/jobs', jobRoutes);
 app.use('/api/shifts', shiftRoutes);
-app.use('/api/me/shifts', workerShiftsRoutes);
 app.use('/api/payroll', payrollRoutes);
-app.use('/api/me/payroll', payrollRoutes);
 app.use('/api/reviews', reviewRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/admin', adminRoutes);

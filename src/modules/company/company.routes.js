@@ -163,6 +163,40 @@ router.delete('/roles/:id', authenticate, companyController.deleteRole);
 
 /**
  * @swagger
+ * /api/company/onboarding-steps:
+ *   get:
+ *     summary: List onboarding steps (search & pagination)
+ *     description: Canonical onboarding steps for admin filters. Supports q, page, limit (default 5).
+ *     tags: [Company]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: q
+ *         schema:
+ *           type: string
+ *         description: Case-insensitive substring match on step label
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           maximum: 50
+ *     responses:
+ *       200:
+ *         description: Paged list of onboarding step definitions
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ */
+router.get('/onboarding-steps', authenticate, companyController.getOnboardingSteps);
+
+/**
+ * @swagger
  * /api/company/role-categories:
  *   get:
  *     summary: List role categories
