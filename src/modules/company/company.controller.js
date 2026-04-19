@@ -25,9 +25,8 @@ class CompanyController {
   async getRoles(req, res, next) {
     try {
       const roles = await companyService.getRoles(req.company_id, req.query);
-      if (roles && typeof roles === 'object' && !Array.isArray(roles) && Array.isArray(roles.items)) {
-        res.set('Cache-Control', 'private, max-age=30, stale-while-revalidate=120');
-      }
+      // Avoid browser/proxy caching of mutable company data (list must refresh after mutations).
+      res.set('Cache-Control', 'no-store');
       res.json(roles);
     } catch (error) {
       next(new AppError(error.message, error.statusCode || 500));

@@ -24,6 +24,24 @@ class WorkerController {
     }
   }
 
+  async getApprovedWorkers(req, res, next) {
+    try {
+      const workers = await workerService.getApprovedWorkers(req.company_id);
+      res.json(workers);
+    } catch (error) {
+      next(new AppError(error.message, error.statusCode || 500));
+    }
+  }
+
+  async getApprovedWorkerLocationFacets(req, res, next) {
+    try {
+      const result = await workerService.getApprovedWorkerLocationFacets(req.company_id, req.query);
+      res.json(result);
+    } catch (error) {
+      next(new AppError(error.message, error.statusCode || 500));
+    }
+  }
+
   async getActiveWorkersRoleBased(req, res, next) {
     try {
       const companyRoleId = req.query.company_role_id;
@@ -47,6 +65,15 @@ class WorkerController {
     try {
       const worker = await workerService.updateWorker(req.params.id, req.company_id, req.body);
       res.json(worker);
+    } catch (error) {
+      next(new AppError(error.message, error.statusCode || 500));
+    }
+  }
+
+  async deleteWorker(req, res, next) {
+    try {
+      const result = await workerService.deleteWorker(req.params.id, req.company_id);
+      res.status(200).json(result);
     } catch (error) {
       next(new AppError(error.message, error.statusCode || 500));
     }

@@ -113,6 +113,7 @@ const schemas = {
   }),
   workerOnboardingContract: Joi.object({
     name: Joi.string().trim().required(),
+    employment_contract_text: Joi.string().max(100000).allow('').optional(),
   }),
 
   workerOnboardingEmergencyContact: Joi.object({

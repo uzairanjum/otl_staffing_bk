@@ -29,4 +29,6 @@ const workerAddressSchema = new mongoose.Schema({
   timestamps: true
 });
 
+workerAddressSchema.index({ worker_id: 1 });
+
 module.exports = mongoose.model('WorkerAddress', workerAddressSchema, 'worker_addresses');

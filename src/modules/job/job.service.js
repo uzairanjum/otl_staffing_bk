@@ -270,6 +270,65 @@ class JobService {
     };
   }
 
+  /** Paged client names for job filters (search + limit; uses compound index company_id + name). */
+  async searchJobFilterClients(companyId, filters = {}) {
+    const Client = require('../client/Client');
+    const { page, limit, skip } = this._parsePaging(filters, 5);
+    const q = typeof filters.q === 'string' ? filters.q.trim() : '';
+
+    const companyOid = mongoose.isValidObjectId(companyId)
+      ? new mongoose.Types.ObjectId(String(companyId))
+      : null;
+    if (!companyOid) {
+      return { items: [], page, limit, totalItems: 0, totalPages: 0 };
+    }
+
+    const query = { company_id: companyOid };
+    if (q) {
+      query.name = new RegExp(this._escapeRegex(q), 'i');
+    }
+
+    const [totalItems, rows] = await Promise.all([
+      Client.countDocuments(query),
+      Client.find(query).select({ _id: 1, name: 1 }).sort({ name: 1 }).skip(skip).limit(limit).lean(),
+    ]);
+
+    const totalPages = totalItems > 0 ? Math.ceil(totalItems / limit) : 0;
+    const items = (rows || []).map((c) => ({
+      label: c.name && String(c.name).trim() ? String(c.name).trim() : '—',
+      value: String(c._id),
+    }));
+
+    return { items, page, limit, totalItems, totalPages };
+  }
+
+  /** Canonical job statuses for filter dropdown (tiny list; paged for UI consistency). */
+  async searchJobFilterStatuses(_companyId, filters = {}) {
+    const { page, limit, skip } = this._parsePaging(filters, 5);
+    const q = typeof filters.q === 'string' ? filters.q.trim().toLowerCase() : '';
+
+    const canonical = [
+      { value: 'draft', label: 'Draft' },
+      { value: 'active', label: 'Active' },
+      { value: 'inactive', label: 'Inactive' },
+      { value: 'completed', label: 'Completed' },
+      { value: 'cancelled', label: 'Cancelled' },
+    ];
+
+    let rows = canonical;
+    if (q) {
+      rows = canonical.filter(
+        (r) => r.label.toLowerCase().includes(q) || r.value.includes(q),
+      );
+    }
+
+    const totalItems = rows.length;
+    const totalPages = totalItems > 0 ? Math.ceil(totalItems / limit) : 0;
+    const items = rows.slice(skip, skip + limit).map((r) => ({ label: r.label, value: r.value }));
+
+    return { items, page, limit, totalItems, totalPages };
+  }
+
   async createJob(companyId, data) {
     const job = await Job.create({
       ...data,
