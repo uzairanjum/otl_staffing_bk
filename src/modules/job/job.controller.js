@@ -29,6 +29,26 @@ class JobController {
     }
   }
 
+  async searchJobFilterClients(req, res, next) {
+    try {
+      res.set('Cache-Control', 'no-store');
+      const data = await jobService.searchJobFilterClients(req.company_id, req.query);
+      res.json(data);
+    } catch (error) {
+      next(new AppError(error.message, error.statusCode || 500));
+    }
+  }
+
+  async searchJobFilterStatuses(req, res, next) {
+    try {
+      res.set('Cache-Control', 'no-store');
+      const data = await jobService.searchJobFilterStatuses(req.company_id, req.query);
+      res.json(data);
+    } catch (error) {
+      next(new AppError(error.message, error.statusCode || 500));
+    }
+  }
+
   async createJob(req, res, next) {
     try {
       const job = await jobService.createJob(req.company_id, req.body);
