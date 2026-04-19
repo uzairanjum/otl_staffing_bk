@@ -41,7 +41,12 @@ const requireRole = (...roles) => {
     }
     
     if (!roles.includes(req.user.role)) {
-      return res.status(403).json({ error: 'Insufficient permissions' });
+      return res.status(403).json({
+        error: 'Insufficient permissions',
+        message: `This action requires role: ${roles.join(' or ')}. Your account role is "${req.user.role || 'unknown'}".`,
+        requiredRoles: roles,
+        currentRole: req.user.role,
+      });
     }
     
     next();

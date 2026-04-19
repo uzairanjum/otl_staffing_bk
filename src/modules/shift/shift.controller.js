@@ -1,5 +1,6 @@
 const shiftService = require('./shift.service');
 const { AppError } = require('../../common/middleware/error.middleware');
+const { filterResponseCache } = require('../../common/utils/filter-response-cache');
 
 class ShiftController {
   async getShiftTemplates(req, res, next) {
@@ -56,6 +57,26 @@ class ShiftController {
     }
   }
 
+  async getShiftLocationsPaged(req, res, next) {
+    try {
+      const data = await shiftService.getShiftLocationsPaged(req.company_id, req.query);
+      res.set('Cache-Control', 'private, max-age=30, stale-while-revalidate=120');
+      res.json(data);
+    } catch (error) {
+      next(new AppError(error.message, error.statusCode || 500));
+    }
+  }
+
+  async getShiftJobsPaged(req, res, next) {
+    try {
+      const data = await shiftService.getShiftJobsPaged(req.company_id, req.query);
+      res.set('Cache-Control', 'private, max-age=30, stale-while-revalidate=120');
+      res.json(data);
+    } catch (error) {
+      next(new AppError(error.message, error.statusCode || 500));
+    }
+  }
+
   async searchShifts(req, res, next) {
     try {
       const result = await shiftService.searchShifts(req.company_id, req.query);
@@ -71,6 +92,7 @@ class ShiftController {
         summary: req.query?.summary === '1' || req.query?.summary === 'true',
         actorUserId: req.user?._id,
       });
+      filterResponseCache.invalidateShiftFilters(req.company_id);
       res.status(201).json(shift);
     } catch (error) {
       next(new AppError(error.message, error.statusCode || 500));
@@ -92,6 +114,7 @@ class ShiftController {
         summary: req.query?.summary === '1' || req.query?.summary === 'true',
         actorUserId: req.user?._id,
       });
+      filterResponseCache.invalidateShiftFilters(req.company_id);
       res.json(shift);
     } catch (error) {
       next(new AppError(error.message, error.statusCode || 500));
@@ -101,6 +124,7 @@ class ShiftController {
   async deleteShift(req, res, next) {
     try {
       await shiftService.deleteShift(req.params.id, req.company_id);
+      filterResponseCache.invalidateShiftFilters(req.company_id);
       res.json({ message: 'Shift deleted successfully' });
     } catch (error) {
       next(new AppError(error.message, error.statusCode || 500));
@@ -110,6 +134,7 @@ class ShiftController {
   async duplicateShift(req, res, next) {
     try {
       const shift = await shiftService.duplicateShift(req.params.id, req.company_id);
+      filterResponseCache.invalidateShiftFilters(req.company_id);
       res.status(201).json(shift);
     } catch (error) {
       next(new AppError(error.message, error.statusCode || 500));
@@ -119,6 +144,7 @@ class ShiftController {
   async publishShift(req, res, next) {
     try {
       const shift = await shiftService.publishShift(req.params.id, req.company_id);
+      filterResponseCache.invalidateShiftFilters(req.company_id);
       res.json(shift);
     } catch (error) {
       next(new AppError(error.message, error.statusCode || 500));
