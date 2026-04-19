@@ -82,41 +82,57 @@ class ClientService {
       match.$or = [{ name: rx }, { email: rx }, { phone: rx }];
     }
 
+    const skipJobsCount = ['1', 'true', 'yes'].includes(
+      String(query.skip_jobs_count ?? query.skip_job_counts ?? '').toLowerCase(),
+    );
+
+    const itemsWithCounts = [
+      { $skip: skip },
+      { $limit: limit },
+      {
+        $lookup: {
+          from: 'jobs',
+          let: { clientId: '$_id' },
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $and: [
+                    { $eq: ['$company_id', companyObjectId] },
+                    { $eq: ['$client_id', '$$clientId'] },
+                  ],
+                },
+              },
+            },
+            { $count: 'count' },
+          ],
+          as: 'job_count',
+        },
+      },
+      {
+        $addFields: {
+          jobs_count: { $ifNull: [{ $first: '$job_count.count' }, 0] },
+        },
+      },
+      { $project: { job_count: 0 } },
+    ];
+
+    const itemsLight = [
+      { $skip: skip },
+      { $limit: limit },
+      {
+        $addFields: {
+          jobs_count: { $literal: 0 },
+        },
+      },
+    ];
+
     const [result] = await Client.aggregate([
       { $match: match },
       { $sort: { createdAt: -1 } },
       {
         $facet: {
-          items: [
-            { $skip: skip },
-            { $limit: limit },
-            {
-              $lookup: {
-                from: 'jobs',
-                let: { clientId: '$_id' },
-                pipeline: [
-                  {
-                    $match: {
-                      $expr: {
-                        $and: [
-                          { $eq: ['$company_id', companyObjectId] },
-                          { $eq: ['$client_id', '$$clientId'] },
-                        ],
-                      },
-                    },
-                  },
-                  { $count: 'count' },
-                ],
-                as: 'job_count',
-              },
-            },
-            {
-              $addFields: {
-                jobs_count: { $ifNull: [{ $first: '$job_count.count' }, 0] },
-              },
-            },
-            { $project: { job_count: 0 } },
-          ],
+          items: skipJobsCount ? itemsLight : itemsWithCounts,
           totalCount: [{ $count: 'count' }],
         },
       },
@@ -483,14 +499,18 @@ class ClientService {
   }
 
   async getRepresentatives(clientId, companyId) {
-    await this.getClient(clientId, companyId);
+    const exists = await Client.exists({ _id: clientId, company_id: companyId });
+    if (!exists) {
+      throw new AppError('Client not found', 404);
+    }
     return User.find({
       client_id: clientId,
       company_id: companyId,
-      role: 'client_rep'
+      role: 'client_rep',
     })
-      .select('_id client_id company_id name email phone address representativerole status role first_login refresh_token is_active createdAt updatedAt')
-      .sort({ createdAt: -1 });
+      .select('_id name email phone representativerole')
+      .sort({ createdAt: -1 })
+      .lean();
   }
 
   async createRepresentative(clientId, companyId, data) {

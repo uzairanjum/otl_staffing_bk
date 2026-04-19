@@ -88,6 +88,47 @@ router.get('/filters', shiftController.getShiftFilters);
 
 /**
  * @swagger
+ * /api/shifts/filters/jobs:
+ *   get:
+ *     summary: Jobs used on shifts (search & pagination)
+ *     tags: [Shifts]
+ *     security:
+ *       - bearerAuth: []
+ */
+router.get('/filters/jobs', shiftController.getShiftJobsPaged);
+
+/**
+ * @swagger
+ * /api/shifts/filters/locations:
+ *   get:
+ *     summary: List distinct shift locations (search & pagination)
+ *     description: Locations that appear on company shifts; supports q, page, limit (default 5)
+ *     tags: [Shifts]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: q
+ *         schema:
+ *           type: string
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: Paged location strings
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ */
+router.get('/filters/locations', shiftController.getShiftLocationsPaged);
+
+/**
+ * @swagger
  * /api/shifts/search:
  *   get:
  *     summary: Search shifts (paged)

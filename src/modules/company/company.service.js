@@ -4,6 +4,7 @@ const CompanyWorkingHours = require('./CompanyWorkingHours');
 const RoleCategory = require('./RoleCategory');
 const TrainingCategory = require('./TrainingCategory');
 const { AppError } = require('../../common/middleware/error.middleware');
+const { filterResponseCache } = require('../../common/utils/filter-response-cache');
 const { v4: uuidv4 } = require('uuid');
 
 class CompanyService {
@@ -51,12 +52,63 @@ class CompanyService {
       query.name = searchRegex;
     }
 
+    const cacheKey = filterResponseCache.makeKey('companyFilters:roles', companyId, { q, page, limit });
+    const cached = filterResponseCache.get(cacheKey);
+    if (cached !== undefined) return cached;
+
     const [items, totalItems] = await Promise.all([
-      CompanyRole.find(query).sort({ name: 1 }).skip(skip).limit(limit),
+      CompanyRole.find(query).select('_id name').sort({ name: 1 }).skip(skip).limit(limit).lean(),
       CompanyRole.countDocuments(query),
     ]);
 
     const totalPages = totalItems > 0 ? Math.ceil(totalItems / limit) : 0;
+    const result = {
+      items,
+      page,
+      limit,
+      totalItems,
+      totalPages,
+    };
+    filterResponseCache.set(cacheKey, result);
+    return result;
+  }
+
+  /**
+   * Canonical onboarding step definitions (aligned with worker onboarding flow).
+   * Search + pagination for admin filter dropdowns; companyId reserved for future overrides.
+   */
+  async getOnboardingSteps(_companyId, filters = {}) {
+    const CANONICAL = [
+      { id: 'contract', value: 'Contract', label: 'Contract', order: 1 },
+      { id: 'basic_info', value: 'Basic Info', label: 'Basic Info', order: 2 },
+      { id: 'emergency', value: 'Emergency', label: 'Emergency', order: 3 },
+      { id: 'tax_bank', value: 'Tax & Bank', label: 'Tax & Bank', order: 4 },
+      { id: 'time_off', value: 'Time Off', label: 'Time Off', order: 5 },
+      { id: 'documents', value: 'Documents', label: 'Documents', order: 6 },
+      { id: 'training', value: 'Training', label: 'Training', order: 7 },
+      { id: 'review', value: 'Review', label: 'Review', order: 8 },
+      { id: 'complete', value: 'Complete', label: 'Complete', order: 9 },
+    ];
+
+    const page = Number.isFinite(Number(filters.page)) && Number(filters.page) > 0 ? Number(filters.page) : 1;
+    const requestedLimit =
+      Number.isFinite(Number(filters.limit)) && Number(filters.limit) > 0 ? Number(filters.limit) : 5;
+    const limit = Math.min(Math.max(requestedLimit, 1), 50);
+    const q = typeof filters.q === 'string' ? filters.q.trim().toLowerCase() : '';
+
+    let rows = [...CANONICAL];
+    if (q) {
+      rows = rows.filter(
+        (row) =>
+          row.label.toLowerCase().includes(q) || row.value.toLowerCase().includes(q),
+      );
+    }
+
+    const totalItems = rows.length;
+    const totalPages = totalItems > 0 ? Math.ceil(totalItems / limit) : 0;
+    const skip = (page - 1) * limit;
+    const items = rows.slice(skip, skip + limit);
+
     return {
       items,
       page,

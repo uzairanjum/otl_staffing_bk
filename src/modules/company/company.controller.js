@@ -1,5 +1,6 @@
 const companyService = require('./company.service');
 const { AppError } = require('../../common/middleware/error.middleware');
+const { filterResponseCache } = require('../../common/utils/filter-response-cache');
 
 class CompanyController {
   async getCompany(req, res, next) {
@@ -24,7 +25,19 @@ class CompanyController {
   async getRoles(req, res, next) {
     try {
       const roles = await companyService.getRoles(req.company_id, req.query);
+      if (roles && typeof roles === 'object' && !Array.isArray(roles) && Array.isArray(roles.items)) {
+        res.set('Cache-Control', 'private, max-age=30, stale-while-revalidate=120');
+      }
       res.json(roles);
+    } catch (error) {
+      next(new AppError(error.message, error.statusCode || 500));
+    }
+  }
+
+  async getOnboardingSteps(req, res, next) {
+    try {
+      const data = await companyService.getOnboardingSteps(req.company_id, req.query);
+      res.json(data);
     } catch (error) {
       next(new AppError(error.message, error.statusCode || 500));
     }
@@ -35,6 +48,7 @@ class CompanyController {
       console.log(req.company_id);
       console.log(req.body);
       const role = await companyService.createRole(req.company_id, req.body);
+      filterResponseCache.invalidateCompanyRoleFilters(req.company_id);
       res.status(201).json(role);
     } catch (error) {
       next(new AppError(error.message, error.statusCode || 500));
@@ -44,6 +58,7 @@ class CompanyController {
   async updateRole(req, res, next) {
     try {
       const role = await companyService.updateRole(req.params.id, req.company_id, req.body);
+      filterResponseCache.invalidateCompanyRoleFilters(req.company_id);
       res.json(role);
     } catch (error) {
       next(new AppError(error.message, error.statusCode || 500));
@@ -53,6 +68,7 @@ class CompanyController {
   async deleteRole(req, res, next) {
     try {
       await companyService.deleteRole(req.params.id, req.company_id);
+      filterResponseCache.invalidateCompanyRoleFilters(req.company_id);
       res.json({ message: 'Role deleted successfully' });
     } catch (error) {
       next(new AppError(error.message, error.statusCode || 500));

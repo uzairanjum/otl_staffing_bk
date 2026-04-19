@@ -35,5 +35,6 @@ const companyRoleSchema = new mongoose.Schema({
 });
 
 companyRoleSchema.index({ company_id: 1, name: 1 }, { unique: true });
+companyRoleSchema.index({ company_id: 1, is_active: 1, name: 1 });
 
 module.exports = mongoose.model('CompanyRole', companyRoleSchema, 'company_roles');
