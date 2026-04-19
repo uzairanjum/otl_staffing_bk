@@ -94,6 +94,58 @@ router.get(
 
 /**
  * @swagger
+ * /api/workers/approved:
+ *   get:
+ *     summary: List approved workers
+ *     description: Workers with approved=true for the authenticated admin's company (JWT). Optimized query.
+ *     tags: [Workers]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: List of approved workers (same shape as GET /api/workers rows)
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       403:
+ *         $ref: '#/components/responses/Forbidden'
+ */
+router.get('/approved', authenticate, requireRole('admin'), workerController.getApprovedWorkers);
+
+/**
+ * @swagger
+ * /api/workers/filters/locations:
+ *   get:
+ *     summary: Distinct cities for approved workers
+ *     description: Searchable paginated facets from worker_addresses.city (joined to approved users). JWT.
+ *     tags: [Workers]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: q
+ *         schema:
+ *           type: string
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: Paged items with name field per row
+ */
+router.get(
+  '/filters/locations',
+  authenticate,
+  requireRole('admin'),
+  workerController.getApprovedWorkerLocationFacets,
+);
+
+/**
+ * @swagger
  * /api/workers/{id}:
  *   get:
  *     summary: Get worker by ID
@@ -158,6 +210,10 @@ router.get(
  */
 router.get('/:id', authenticate, requireRole('admin'), workerController.getWorker);
 router.put('/:id', authenticate, requireRole('admin'), workerController.updateWorker);
+/**
+ * DELETE /api/workers/:id — Permanently remove worker (users) and related docs; admin JWT.
+ */
+router.delete('/:id', authenticate, requireRole('admin'), workerController.deleteWorker);
 router.put(
   '/:id/onboarding/contract',
   authenticate,

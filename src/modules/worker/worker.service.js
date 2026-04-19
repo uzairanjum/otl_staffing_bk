@@ -11,7 +11,7 @@ const WorkerFile = require('./WorkerFile');
 const WorkerEmergencyContact = require('./WorkerEmergencyContact');
 const WorkerTimeOff = require('./WorkerTimeOff');
 const TimeOffRequest = require('./TimeOffRequest');
-const { cloudinary } = require('../../config/cloudinary');
+const { cloudinary, deleteFromCloudinary } = require('../../config/cloudinary');
 const { AppError } = require('../../common/middleware/error.middleware');
 const { sendEmailWithTemplate } = require('../../config/email');
 const config = require('../../config');
@@ -19,6 +19,8 @@ const passwordResetTokenService = require('../../common/services/passwordResetTo
 const CompanyRole = require('../company/CompanyRole');
 const Training = require('../company/Training');
 const { v4: uuidv4 } = require('uuid');
+const { filterResponseCache } = require('../../common/utils/filter-response-cache');
+const FcmToken = require('../notification/FcmToken');
 
 class WorkerService {
   generateTempPassword() {
@@ -288,16 +290,13 @@ class WorkerService {
     }
   }
 
-  async getWorkers(companyId, filters = {}) {
-    const query = { company_id: companyId, role: 'worker' };
-    if (filters.status) {
-      query.status = filters.status;
+  async _enrichWorkersWithRolesAndTrainings(companyId, users) {
+    const ids = users.map((u) => u._id);
+    if (ids.length === 0) {
+      return [];
     }
 
-    const users = await User.find(query).sort({ createdAt: -1 }).lean();
-    const ids = users.map((u) => u._id);
-
-    const [roleDocs, trainingDocs] = await Promise.all([
+    const [roleDocs, trainingDocs, addressDocs] = await Promise.all([
       WorkerRole.find({ worker_id: { $in: ids }, company_id: companyId })
         .populate({
           path: 'roles.company_role_id',
@@ -310,18 +309,128 @@ class WorkerService {
           { path: 'trainings.role_ids', select: 'name' },
         ])
         .lean(),
+      WorkerAddress.find({ worker_id: { $in: ids } }).select('worker_id city').lean(),
     ]);
 
     const roleByWorker = new Map(roleDocs.map((d) => [String(d.worker_id), d]));
     const trainByWorker = new Map(
       trainingDocs.map((d) => [String(d.worker_id), this.normalizeWorkerTrainingLean(d)])
     );
+    const cityByWorker = new Map();
+    for (const d of addressDocs) {
+      const wid = String(d.worker_id);
+      if (!cityByWorker.has(wid)) {
+        cityByWorker.set(wid, String(d.city ?? '').trim());
+      }
+    }
 
     return users.map((u) => ({
       ...u,
       worker_roles: roleByWorker.get(String(u._id)) || null,
       worker_trainings: trainByWorker.get(String(u._id)) || null,
+      /** Trimmed `worker_addresses.city` for list UIs (All Staff location). */
+      address_city: cityByWorker.get(String(u._id)) || '',
     }));
+  }
+
+  async getWorkers(companyId, filters = {}) {
+    const query = { company_id: companyId, role: 'worker' };
+    if (filters.status) {
+      query.status = filters.status;
+    }
+
+    const users = await User.find(query).sort({ createdAt: -1 }).lean();
+    return this._enrichWorkersWithRolesAndTrainings(companyId, users);
+  }
+
+  /**
+   * Approved workers only (same company as JWT). Indexed query + parallel role/training hydration.
+   */
+  async getApprovedWorkers(companyId) {
+    const users = await User.find({
+      company_id: companyId,
+      role: 'worker',
+      approved: true,
+    })
+      .sort({ approved_at: -1, createdAt: -1 })
+      .lean();
+    return this._enrichWorkersWithRolesAndTrainings(companyId, users);
+  }
+
+  /**
+   * Distinct trimmed `worker_addresses.city` for approved workers in this company (admin location filter).
+   * Joins `worker_addresses` → `users` so only company-approved workers contribute cities.
+   */
+  async getApprovedWorkerLocationFacets(companyId, filters = {}) {
+    const page = Number.isFinite(Number(filters.page)) && Number(filters.page) > 0 ? Number(filters.page) : 1;
+    const requestedLimit =
+      Number.isFinite(Number(filters.limit)) && Number(filters.limit) > 0 ? Number(filters.limit) : 5;
+    const limit = Math.min(Math.max(requestedLimit, 1), 50);
+    const skip = (page - 1) * limit;
+    const q = typeof filters.q === 'string' ? filters.q.trim() : '';
+    const escapeRegex = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const searchRegex = q ? new RegExp(escapeRegex(q), 'i') : null;
+
+    const cacheKey = filterResponseCache.makeKey('workerFilters:approvedCities', companyId, {
+      q,
+      page,
+      limit,
+    });
+    const cached = filterResponseCache.get(cacheKey);
+    if (cached !== undefined) return cached;
+
+    const companyOid = new mongoose.Types.ObjectId(String(companyId));
+    const pipeline = [
+      {
+        $lookup: {
+          from: 'users',
+          localField: 'worker_id',
+          foreignField: '_id',
+          as: 'workerUser',
+        },
+      },
+      { $unwind: '$workerUser' },
+      {
+        $match: {
+          'workerUser.company_id': companyOid,
+          'workerUser.role': 'worker',
+          'workerUser.approved': true,
+        },
+      },
+      {
+        $addFields: {
+          loc: { $trim: { input: { $ifNull: ['$city', ''] } } },
+        },
+      },
+      { $match: { loc: { $nin: ['', null] } } },
+    ];
+    if (searchRegex) {
+      pipeline.push({ $match: { loc: searchRegex } });
+    }
+    pipeline.push(
+      { $group: { _id: '$loc' } },
+      { $sort: { _id: 1 } },
+      {
+        $facet: {
+          pageSlice: [{ $skip: skip }, { $limit: limit }],
+          totalCount: [{ $count: 'c' }],
+        },
+      },
+    );
+
+    const [agg] = await WorkerAddress.aggregate(pipeline);
+    if (!agg) {
+      const empty = { items: [], page, limit, totalItems: 0, totalPages: 0 };
+      filterResponseCache.set(cacheKey, empty);
+      return empty;
+    }
+    const rows = agg.pageSlice || [];
+    const totalItems = agg.totalCount?.[0]?.c ?? 0;
+    const totalPages = totalItems > 0 ? Math.ceil(totalItems / limit) : 0;
+    const items = rows.map((r) => ({ name: r._id }));
+    const result = { items, page, limit, totalItems, totalPages };
+    filterResponseCache.set(cacheKey, result);
+    return result;
   }
 
   async getActiveWorkersRoleBased(companyId, companyRoleId) {
@@ -431,6 +540,7 @@ class WorkerService {
   }
 
   async saveOnboardingContract(workerUserId, companyId, data) {
+    const MAX_CONTRACT_LEN = 100000;
     const user = await User.findOne({
       _id: workerUserId,
       company_id: companyId,
@@ -441,8 +551,18 @@ class WorkerService {
       throw new AppError('Worker not found', 404);
     }
 
+    if (data.employment_contract_text !== undefined) {
+      const raw = String(data.employment_contract_text ?? '');
+      if (raw.length > MAX_CONTRACT_LEN) {
+        throw new AppError('Contract text exceeds maximum length', 400);
+      }
+      user.employment_contract_text = raw;
+    }
+
+    /** Active workers: persist contract text only (no onboarding step / signature changes here). */
     if (user.status === 'active') {
-      throw new AppError('Contract cannot be changed for active workers here', 400);
+      await user.save();
+      return this.getWorker(workerUserId, companyId);
     }
 
     const name = String(data.name || '').trim().replace(/\s+/g, ' ');
@@ -783,6 +903,7 @@ class WorkerService {
     }
 
     user.status = 'active';
+    user.approved = true;
     user.approved_by = approvedBy;
     user.approved_at = new Date();
     await user.save();
@@ -821,6 +942,7 @@ class WorkerService {
     }
 
     user.status = 'active';
+    user.approved = true;
     if (activatedBy) {
       user.approved_by = activatedBy;
     }
@@ -1260,6 +1382,144 @@ class WorkerService {
   async getWorkerTimeOffs(workerUserId, companyId) {
     await this.getWorker(workerUserId, companyId);
     return TimeOffRequest.find({ worker_id: workerUserId }).sort({ createdAt: -1 });
+  }
+
+  /**
+   * Remove Cloudinary assets referenced by worker file and training-document bundles (best-effort).
+   */
+  async _deleteCloudinaryAssetsForWorker(workerUserId, companyId) {
+    const wid =
+      workerUserId instanceof mongoose.Types.ObjectId
+        ? workerUserId
+        : new mongoose.Types.ObjectId(String(workerUserId));
+    const companyOid =
+      companyId instanceof mongoose.Types.ObjectId
+        ? companyId
+        : new mongoose.Types.ObjectId(String(companyId));
+
+    const publicIds = new Set();
+    const [fileBundle, trainingBundles] = await Promise.all([
+      WorkerFile.findOne({ worker_id: wid }).lean(),
+      WorkerTrainingDocument.find({ worker_id: wid, company_id: companyOid }).lean(),
+    ]);
+
+    if (fileBundle?.files?.length) {
+      for (const f of fileBundle.files) {
+        const pid = f.cloudinary_public_id ? String(f.cloudinary_public_id).trim() : '';
+        if (pid) publicIds.add(pid);
+      }
+    }
+    if (Array.isArray(trainingBundles)) {
+      for (const b of trainingBundles) {
+        for (const d of b.documents || []) {
+          const pid = d.cloudinary_public_id ? String(d.cloudinary_public_id).trim() : '';
+          if (pid) publicIds.add(pid);
+        }
+      }
+    }
+
+    await Promise.allSettled(
+      [...publicIds].map((publicId) =>
+        deleteFromCloudinary(publicId).catch(() => undefined),
+      ),
+    );
+  }
+
+  /**
+   * Unassign worker from shift position rows so deleted user ids are not left referenced.
+   */
+  async _clearWorkerShiftAssignments(companyId, workerUserId) {
+    const ShiftPositionAssignment = require('../shift/ShiftPositionAssignment');
+    const wid =
+      workerUserId instanceof mongoose.Types.ObjectId
+        ? workerUserId
+        : new mongoose.Types.ObjectId(String(workerUserId));
+    const companyOid =
+      companyId instanceof mongoose.Types.ObjectId
+        ? companyId
+        : new mongoose.Types.ObjectId(String(companyId));
+
+    await ShiftPositionAssignment.updateMany(
+      { company_id: companyOid, 'assignments.worker_id': wid },
+      [
+        {
+          $set: {
+            assignments: {
+              $map: {
+                input: '$assignments',
+                as: 'a',
+                in: {
+                  $cond: [
+                    { $eq: ['$$a.worker_id', wid] },
+                    {
+                      $mergeObjects: [
+                        '$$a',
+                        {
+                          worker_id: null,
+                          status: 'unassigned',
+                        },
+                      ],
+                    },
+                    '$$a',
+                  ],
+                },
+              },
+            },
+          },
+        },
+      ],
+    );
+  }
+
+  /**
+   * Permanently remove a worker and related documents (admin, company-scoped). JWT via route.
+   * Deletes are batched in parallel where safe; user row removed last.
+   */
+  async deleteWorker(workerUserId, companyId) {
+    if (!mongoose.Types.ObjectId.isValid(workerUserId)) {
+      throw new AppError('Invalid worker id', 400);
+    }
+    const wid = new mongoose.Types.ObjectId(String(workerUserId));
+    const companyOid = new mongoose.Types.ObjectId(String(companyId));
+
+    const exists = await User.findOne({
+      _id: wid,
+      company_id: companyOid,
+      role: 'worker',
+    })
+      .select('_id')
+      .lean();
+    if (!exists) {
+      throw new AppError('Worker not found', 404);
+    }
+
+    await this._deleteCloudinaryAssetsForWorker(wid, companyOid);
+    await this._clearWorkerShiftAssignments(companyOid, wid);
+
+    const filterWorker = { worker_id: wid };
+    const filterWorkerCompany = { worker_id: wid, company_id: companyOid };
+
+    await Promise.all([
+      WorkerAddress.deleteMany(filterWorker),
+      WorkerBankDetail.deleteMany(filterWorker),
+      WorkerEmergencyContact.deleteMany(filterWorker),
+      WorkerFile.deleteMany(filterWorker),
+      WorkerRole.deleteMany(filterWorkerCompany),
+      WorkerTaxInfo.deleteMany(filterWorker),
+      WorkerTraining.deleteMany(filterWorkerCompany),
+      WorkerTrainingDocument.deleteMany(filterWorkerCompany),
+      WorkerTimeOff.deleteMany(filterWorker),
+      WorkerWorkingHours.deleteMany(filterWorker),
+      TimeOffRequest.deleteMany({ worker_id: wid, company_id: companyOid }),
+      FcmToken.deleteMany({ user_id: wid }),
+    ]);
+
+    const deleted = await User.deleteOne({ _id: wid, company_id: companyOid, role: 'worker' });
+    if (deleted.deletedCount !== 1) {
+      throw new AppError('Worker could not be deleted', 500);
+    }
+
+    return { message: 'Worker deleted', id: String(wid) };
   }
 }
 

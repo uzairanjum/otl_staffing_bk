@@ -102,6 +102,12 @@ router.get('/search', jobController.searchJobs);
  */
 router.get('/filter', jobController.getJobFilters);
 
+/**
+ * Paged search for job filter dropdowns (limit 5): clients by name, statuses (canonical list).
+ */
+router.get('/filters/clients', jobController.searchJobFilterClients);
+router.get('/filters/statuses', jobController.searchJobFilterStatuses);
+
 router.get('/', jobController.getJobs);
 router.post('/', validate(schemas.job), jobController.createJob);
 

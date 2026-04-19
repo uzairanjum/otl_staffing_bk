@@ -76,6 +76,16 @@ const userSchema = new mongoose.Schema({
   contract_signed_at: {
     type: Date
   },
+  /** Full employment contract body (admin-editable; persisted per worker). */
+  employment_contract_text: {
+    type: String,
+    default: '',
+  },
+  /** Set true when an admin approves the worker (onboarding); stored with approved_at / approved_by. */
+  approved: {
+    type: Boolean,
+    default: false,
+  },
   approved_by: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User'
@@ -128,5 +138,7 @@ userSchema.methods.comparePassword = async function(candidatePassword) {
 };
 
 userSchema.index({ email: 1, company_id: 1 }, { unique: true });
+/** Speeds up admin list of approved workers per company */
+userSchema.index({ company_id: 1, role: 1, approved: 1 });
 
 module.exports = mongoose.model('User', userSchema, 'users');

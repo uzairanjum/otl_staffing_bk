@@ -57,7 +57,7 @@ class CompanyService {
     if (cached !== undefined) return cached;
 
     const [items, totalItems] = await Promise.all([
-      CompanyRole.find(query).select('_id name').sort({ name: 1 }).skip(skip).limit(limit).lean(),
+      CompanyRole.find(query).sort({ name: 1 }).skip(skip).limit(limit).lean(),
       CompanyRole.countDocuments(query),
     ]);
 
