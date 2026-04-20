@@ -5,6 +5,7 @@ const FcmToken = require('./FcmToken');
 const { AppError } = require('../../common/middleware/error.middleware');
 const { sendEmailWithTemplate } = require('../../config/email');
 const { sendFCM, sendMulticastFCM } = require('../../config/firebase');
+const logger = require('../../config/logger');
 
 class NotificationService {
   async createNotification(companyId, userId, data) {
@@ -58,7 +59,11 @@ class NotificationService {
           recipient.status = 'delivered';
           await recipient.save();
         } catch (error) {
-          console.error('Email send error:', error.message);
+          logger.error('Notification email delivery failed', {
+            userId: userId.toString(),
+            notificationId: notification._id.toString(),
+            message: error.message
+          });
         }
       }
 
@@ -78,7 +83,11 @@ class NotificationService {
               });
             }
           } catch (error) {
-            console.error('FCM send error:', error.message);
+            logger.error('Notification push delivery failed', {
+              userId: userId.toString(),
+              notificationId: notification._id.toString(),
+              message: error.message
+            });
           }
         }
       }

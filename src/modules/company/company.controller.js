@@ -1,11 +1,14 @@
 const companyService = require('./company.service');
 const { AppError } = require('../../common/middleware/error.middleware');
 const { filterResponseCache } = require('../../common/utils/filter-response-cache');
+const logger = require('../../config/logger');
 
 class CompanyController {
   async getCompany(req, res, next) {
     try {
-      console.log(req.company_id);
+      logger.debug('Fetching company details', {
+        companyId: req.company_id?.toString?.() || req.company_id
+      });
       const company = await companyService.getCompany(req.company_id);
       res.json(company);
     } catch (error) {
@@ -44,8 +47,10 @@ class CompanyController {
 
   async createRole(req, res, next) {
     try {
-      console.log(req.company_id);
-      console.log(req.body);
+      logger.debug('Creating role', {
+        companyId: req.company_id?.toString?.() || req.company_id,
+        hasBody: Boolean(req.body)
+      });
       const role = await companyService.createRole(req.company_id, req.body);
       filterResponseCache.invalidateCompanyRoleFilters(req.company_id);
       res.status(201).json(role);
@@ -121,8 +126,10 @@ class CompanyController {
 
   async createRoleCategory(req, res, next) {
     try {
-      console.log(req.company_id);
-      console.log(req.body);
+      logger.debug('Creating role category', {
+        companyId: req.company_id?.toString?.() || req.company_id,
+        hasBody: Boolean(req.body)
+      });
       const category = await companyService.createRoleCategory(req.company_id, req.body);
       res.status(201).json(category);
     } catch (error) {

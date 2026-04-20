@@ -38,4 +38,17 @@ module.exports = {
       frontendUrl: process.env.FRONTEND_URL || 'http://localhost:3000',
     };
   })(),
+  logging: {
+    level: process.env.LOG_LEVEL || (process.env.NODE_ENV === 'development' ? 'debug' : 'info'),
+    program: process.env.PAPERTRAIL_PROGRAM || 'otl-staffing-backend',
+    papertrail: {
+      host: process.env.PAPERTRAIL_HOST || '',
+      port: (() => {
+        const parsedPort = parseInt(process.env.PAPERTRAIL_PORT || '', 10);
+        return Number.isFinite(parsedPort) ? parsedPort : null;
+      })(),
+      token: process.env.PAPERTRAIL_TOKEN || '',
+      structuredDataId: process.env.PAPERTRAIL_SD_ID || '41058'
+    }
+  }
 };

@@ -3,6 +3,7 @@ const jwtUtil = require('../../common/utils/jwt');
 const { sendEmailWithTemplate } = require('../../config/email');
 const config = require('../../config');
 const passwordResetTokenService = require('../../common/services/passwordResetToken.service');
+const logger = require('../../config/logger');
 
 class AuthService {
   async buildLoginResult(userLoaded) {
@@ -102,7 +103,7 @@ class AuthService {
   }
 
   logPasswordResetFailure(reason, detail = '') {
-    console.warn('[password-reset] failed attempt', { reason, detail });
+    logger.warn('Password reset flow failed attempt', { reason, detail });
   }
 
   async forgotPassword(email) {
