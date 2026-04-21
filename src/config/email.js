@@ -63,6 +63,14 @@ const generateTemplate = (template, data) => {
       <p><strong>Email:</strong> ${data.email}</p>
       <p>Set your password using the secure link below (one-time use):</p>
       <p><a href="${data.setPasswordUrl}">Set your password</a></p>
+      <p>
+        <a
+          href="${data.setPasswordUrl}"
+          style="display:inline-block;background:#f97316;color:#ffffff;text-decoration:none;padding:10px 16px;border-radius:8px;font-weight:600;font-size:14px;"
+        >
+          Set your password
+        </a>
+      </p>
       <p>${expiryLine(data)}</p>
       <p>After setting your password you will be signed in automatically.</p>
     `,

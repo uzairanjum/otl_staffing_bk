@@ -92,6 +92,15 @@ class WorkerController {
     }
   }
 
+  async saveMyOnboardingBasicInfo(req, res, next) {
+    try {
+      const payload = await workerService.saveOnboardingBasicInfo(req.user._id, req.company_id, req.body);
+      res.json(payload);
+    } catch (error) {
+      next(new AppError(error.message, error.statusCode || 500));
+    }
+  }
+
   async saveOnboardingWorkingHours(req, res, next) {
     try {
       const payload = await workerService.saveOnboardingWorkingHours(
@@ -99,6 +108,15 @@ class WorkerController {
         req.company_id,
         req.body
       );
+      res.json(payload);
+    } catch (error) {
+      next(new AppError(error.message, error.statusCode || 500));
+    }
+  }
+
+  async saveMyOnboardingWorkingHours(req, res, next) {
+    try {
+      const payload = await workerService.saveOnboardingWorkingHours(req.user._id, req.company_id, req.body);
       res.json(payload);
     } catch (error) {
       next(new AppError(error.message, error.statusCode || 500));
@@ -117,9 +135,27 @@ class WorkerController {
     }
   }
 
+  async saveMyOnboardingDocumentsTrainings(req, res, next) {
+    try {
+      const payload = await workerService.saveOnboardingDocumentsTrainings(req.user._id, req.company_id);
+      res.json(payload);
+    } catch (error) {
+      next(new AppError(error.message, error.statusCode || 500));
+    }
+  }
+
   async completeOnboarding(req, res, next) {
     try {
       const payload = await workerService.completeOnboarding(req.params.id, req.company_id);
+      res.json(payload);
+    } catch (error) {
+      next(new AppError(error.message, error.statusCode || 500));
+    }
+  }
+
+  async completeMyOnboarding(req, res, next) {
+    try {
+      const payload = await workerService.completeOnboarding(req.user._id, req.company_id);
       res.json(payload);
     } catch (error) {
       next(new AppError(error.message, error.statusCode || 500));
@@ -167,9 +203,27 @@ class WorkerController {
     }
   }
 
+  async getMyWorkerFiles(req, res, next) {
+    try {
+      const files = await workerService.getWorkerFiles(req.user._id, req.company_id);
+      res.json(files);
+    } catch (error) {
+      next(new AppError(error.message, error.statusCode || 500));
+    }
+  }
+
   async uploadWorkerFile(req, res, next) {
     try {
       const file = await workerService.uploadWorkerFile(req.params.id, req.company_id, req.body);
+      res.status(201).json(file);
+    } catch (error) {
+      next(new AppError(error.message, error.statusCode || 500));
+    }
+  }
+
+  async uploadMyWorkerFile(req, res, next) {
+    try {
+      const file = await workerService.uploadWorkerFile(req.user._id, req.company_id, req.body);
       res.status(201).json(file);
     } catch (error) {
       next(new AppError(error.message, error.statusCode || 500));
@@ -204,6 +258,48 @@ class WorkerController {
       const saved = await trainingService.uploadTrainingDocument(
         training_id,
         req.params.id,
+        req.company_id,
+        {
+          worker_training_id,
+          file_url: url,
+          cloudinary_public_id: publicId,
+          document_type: document_type || undefined,
+        }
+      );
+      res.status(201).json(saved);
+    } catch (error) {
+      next(new AppError(error.message, error.statusCode || 500));
+    }
+  }
+
+  async uploadMyWorkerTrainingDocumentMultipart(req, res, next) {
+    try {
+      if (!req.file?.buffer) {
+        next(new AppError('File is required', 400));
+        return;
+      }
+      const { training_id, worker_training_id, document_type } = req.body;
+      if (!training_id || !worker_training_id) {
+        next(new AppError('training_id and worker_training_id are required', 400));
+        return;
+      }
+      if (
+        !config.cloudinary?.cloudName ||
+        !config.cloudinary?.apiKey ||
+        !config.cloudinary?.apiSecret
+      ) {
+        next(new AppError('File storage is not configured', 503));
+        return;
+      }
+
+      const { url, publicId } = await uploadBufferToCloudinary(
+        req.file.buffer,
+        `workers/${req.user._id}/training-documents`
+      );
+
+      const saved = await trainingService.uploadTrainingDocument(
+        training_id,
+        req.user._id,
         req.company_id,
         {
           worker_training_id,
@@ -254,6 +350,42 @@ class WorkerController {
     }
   }
 
+  async uploadMyWorkerFileMultipart(req, res, next) {
+    try {
+      if (!req.file?.buffer) {
+        next(new AppError('File is required', 400));
+        return;
+      }
+      const file_type = req.body.file_type;
+      if (!file_type || !WorkerFile.FILE_TYPES.includes(file_type)) {
+        next(new AppError('Invalid or missing file_type', 400));
+        return;
+      }
+      if (
+        !config.cloudinary?.cloudName ||
+        !config.cloudinary?.apiKey ||
+        !config.cloudinary?.apiSecret
+      ) {
+        next(new AppError('File storage is not configured', 503));
+        return;
+      }
+
+      const { url, publicId } = await uploadBufferToCloudinary(
+        req.file.buffer,
+        `workers/${req.user._id}/documents`
+      );
+
+      const saved = await workerService.uploadWorkerFile(req.user._id, req.company_id, {
+        file_type,
+        file_url: url,
+        cloudinary_public_id: publicId,
+      });
+      res.status(201).json(saved);
+    } catch (error) {
+      next(new AppError(error.message, error.statusCode || 500));
+    }
+  }
+
   async updateWorkerFilesMeta(req, res, next) {
     try {
       const bundle = await workerService.updateWorkerFilesMeta(
@@ -267,9 +399,31 @@ class WorkerController {
     }
   }
 
+  async updateMyWorkerFilesMeta(req, res, next) {
+    try {
+      const bundle = await workerService.updateWorkerFilesMeta(req.user._id, req.company_id, req.body);
+      res.json(bundle);
+    } catch (error) {
+      next(new AppError(error.message, error.statusCode || 500));
+    }
+  }
+
   async deleteWorkerFile(req, res, next) {
     try {
       const result = await workerService.deleteWorkerFile(req.params.id, req.company_id, req.params.fileId);
+      res.json(result);
+    } catch (error) {
+      next(new AppError(error.message, error.statusCode || 500));
+    }
+  }
+
+  async deleteMyWorkerFile(req, res, next) {
+    try {
+      const result = await workerService.deleteWorkerFile(
+        req.user._id,
+        req.company_id,
+        req.params.fileId
+      );
       res.json(result);
     } catch (error) {
       next(new AppError(error.message, error.statusCode || 500));
@@ -379,6 +533,21 @@ class WorkerController {
     try {
       const worker = await workerService.updateWorker(req.user._id, req.company_id, req.body);
       res.json(worker);
+    } catch (error) {
+      next(new AppError(error.message, error.statusCode || 500));
+    }
+  }
+
+  async changeMyPassword(req, res, next) {
+    try {
+      const { currentPassword, newPassword } = req.body;
+      const result = await workerService.changeMyPassword(
+        req.user._id,
+        req.company_id,
+        currentPassword,
+        newPassword
+      );
+      res.json(result);
     } catch (error) {
       next(new AppError(error.message, error.statusCode || 500));
     }

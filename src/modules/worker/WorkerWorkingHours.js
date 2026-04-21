@@ -8,13 +8,17 @@ const availabilityEntrySchema = new mongoose.Schema(
       max: 6,
       required: true,
     },
+    active: {
+      type: Boolean,
+      default: true,
+    },
     start_time: {
       type: String,
-      required: true,
+      default: '',
     },
     end_time: {
       type: String,
-      required: true,
+      default: '',
     },
   },
   { _id: true, timestamps: true }
