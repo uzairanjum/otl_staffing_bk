@@ -1,29 +1,40 @@
 const mongoose = require('mongoose');
 
+const availabilityEntrySchema = new mongoose.Schema(
+  {
+    day_of_week: {
+      type: Number,
+      min: 0,
+      max: 6,
+      required: true,
+    },
+    start_time: {
+      type: String,
+      required: true,
+    },
+    end_time: {
+      type: String,
+      required: true,
+    },
+  },
+  { _id: true, timestamps: true }
+);
+
 const workerWorkingHoursSchema = new mongoose.Schema({
   worker_id: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
-    required: true
+    required: true,
+    unique: true,
   },
-  day_of_week: {
-    type: Number,
-    min: 0,
-    max: 6,
-    required: true
+  availability: {
+    type: [availabilityEntrySchema],
+    default: [],
   },
-  start_time: {
-    type: String,
-    required: true
-  },
-  end_time: {
-    type: String,
-    required: true
-  }
 }, {
   timestamps: true
 });
 
-workerWorkingHoursSchema.index({ worker_id: 1, day_of_week: 1 });
+workerWorkingHoursSchema.index({ worker_id: 1 }, { unique: true });
 
 module.exports = mongoose.model('WorkerWorkingHours', workerWorkingHoursSchema, 'worker_workinghours');

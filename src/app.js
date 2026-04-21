@@ -8,7 +8,9 @@ const swaggerJsDoc = require('swagger-jsdoc');
 const swaggerUi = require('swagger-ui-express');
 const connectDB = require('./config/database');
 const config = require('./config');
+const logger = require('./config/logger');
 const { errorMiddleware, notFoundMiddleware } = require('./common/middleware/error.middleware');
+const { attachRequestContext, requestLogger } = require('./common/middleware/request-logger.middleware');
 const swaggerOptions = require('../swagger.config');
 
 const authRoutes = require('./modules/auth/auth.routes');
@@ -41,6 +43,8 @@ app.use(cors({
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
+app.use(attachRequestContext);
+app.use(requestLogger);
 
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
@@ -84,24 +88,39 @@ app.use('/api/admin', adminRoutes);
 app.use(notFoundMiddleware);
 app.use(errorMiddleware);
 
-
-// Health endpoint on /
-app.get('/health', (req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
-});
-
 const startServer = async () => {
   try {
     await connectDB();
-    console.log('Database connected successfully');
+    logger.info('Database connected successfully');
 
-    app.listen(config.port, () => {
-      console.log(`Server running on port ${config.port}`);
-      console.log(`Environment: ${config.env}`);
-      // console.log(`Swagger UI available at http://localhost:${config.port}/api-docs`);
+    const server = app.listen(config.port, () => {
+      logger.info('Server started', {
+        port: config.port,
+        env: config.env
+      });
+    });
+
+    process.on('unhandledRejection', (reason) => {
+      logger.error('Unhandled promise rejection', {
+        reason: reason?.message || reason,
+        stack: reason?.stack
+      });
+    });
+
+    process.on('uncaughtException', (err) => {
+      logger.error('Uncaught exception - shutting down', {
+        message: err.message,
+        stack: err.stack
+      });
+      server.close(() => {
+        process.exit(1);
+      });
     });
   } catch (error) {
-    console.error('Failed to start server:', error);
+    logger.error('Failed to start server', {
+      message: error.message,
+      stack: error.stack
+    });
     process.exit(1);
   }
 };

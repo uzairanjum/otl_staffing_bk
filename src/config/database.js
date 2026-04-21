@@ -1,22 +1,17 @@
 const mongoose = require('mongoose');
 const config = require('./index');
+const logger = require('./logger');
 
 const connectDB = async () => {
   try {
-    console.log('Connecting to MongoDB...');
-    console.log("database URI",config.mongodb.uri )
+    logger.info('Connecting to MongoDB');
     const conn = await mongoose.connect(config.mongodb.uri);
-    // const dbName = conn.connection.name;
-    // console.log(`MongoDB Connected: ${conn.connection.host} [Database: ${dbName}]`);
-    // Get all "tables" (collections) after connection
-    // const collections = await mongoose.connection.db.listCollections().toArray();
-    // console.log(
-    //   'MongoDB Collections:',
-    //   collections.map((col) => col.name)
-    // );
     return conn;
   } catch (error) {
-    console.error(`MongoDB Connection Error: ${error.message}`);
+    logger.error('MongoDB connection failed', {
+      message: error.message,
+      stack: error.stack
+    });
     process.exit(1);
   }
 };

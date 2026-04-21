@@ -1,6 +1,7 @@
 const User = require('../../common/models/User');
 const { sendEmail } = require('../../config/email');
 const { AppError } = require('../../common/middleware/error.middleware');
+const logger = require('../../config/logger');
 
 function escapeHtml(text) {
   return String(text)
@@ -29,7 +30,11 @@ class AdminService {
     try {
       await sendEmail(normalized, subject.trim(), html, body);
     } catch (err) {
-      console.error('[admin send-email]', err.message);
+      logger.error('Admin worker email failed', {
+        companyId: companyId?.toString?.() || companyId,
+        email: normalized,
+        message: err.message
+      });
       throw new AppError('Failed to send email', 502);
     }
 

@@ -2,6 +2,7 @@ require('dotenv').config();
 const connectDB = require('../config/database');
 const Company = require('../modules/company/Company');
 const User = require('../common/models/User');
+const logger = require('../config/logger');
 
 const ADMIN_DEFAULTS = {
   name: process.env.ADMIN_NAME || 'OTL Admin',
@@ -21,9 +22,13 @@ const ensureCompany = async () => {
       phone: ADMIN_DEFAULTS.companyPhone,
       status: 'active'
     });
-    console.log(`Created company: ${company.name}`);
+    logger.info('Created company for admin initialization', {
+      companyName: company.name
+    });
   } else {
-    console.log(`Using existing company: ${company.name}`);
+    logger.info('Using existing company for admin initialization', {
+      companyName: company.name
+    });
   }
 
   return company;
@@ -69,18 +74,21 @@ const run = async () => {
     const company = await ensureCompany();
     const { user, action } = await upsertAdminUser(company._id);
 
-    console.log(`Admin user ${action} successfully.`);
-    console.log('Stored fields:');
-    console.log(`- _id: ${user._id}`);
-    console.log(`- company_id: ${user.company_id}`);
-    console.log(`- name: ${user.name}`);
-    console.log(`- email: ${user.email}`);
-    console.log(`- role: ${user.role}`);
-    console.log(`- createdAt: ${user.createdAt}`);
-    console.log(`- updatedAt: ${user.updatedAt}`);
-    console.log('- password: stored as bcrypt hash in password_hash');
+    logger.info('Admin user initialized successfully', {
+      action,
+      userId: user._id?.toString?.(),
+      companyId: user.company_id?.toString?.(),
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      createdAt: user.createdAt,
+      updatedAt: user.updatedAt
+    });
   } catch (error) {
-    console.error('Failed to initialize admin user:', error.message);
+    logger.error('Failed to initialize admin user', {
+      message: error.message,
+      stack: error.stack
+    });
     process.exitCode = 1;
   } finally {
     process.exit();

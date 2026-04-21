@@ -22,6 +22,19 @@ const { v4: uuidv4 } = require('uuid');
 const { filterResponseCache } = require('../../common/utils/filter-response-cache');
 const FcmToken = require('../notification/FcmToken');
 
+/** When any file exists, all slots must be present (admin onboarding v2). */
+const ADMIN_ONBOARDING_REQUIRED_FILE_TYPES = [
+  'proof_of_address',
+  'ni_utr',
+  'driving_license_front',
+  'driving_license_back',
+  'passport_front',
+  'passport_inner',
+  'passport_back',
+  'profile_photo',
+  'dvla_check',
+];
+
 class WorkerService {
   generateTempPassword() {
     return uuidv4().slice(0, 8) + 'A1!';
@@ -215,6 +228,7 @@ class WorkerService {
             phone: data.phone,
             status: 'invited',
             onboarding_step: 0,
+            onboarding_schema_version: 2,
             contract_signed: false,
           },
         ],
@@ -326,6 +340,7 @@ class WorkerService {
 
     return users.map((u) => ({
       ...u,
+      onboarding_step: this._clientOnboardingStep(u),
       worker_roles: roleByWorker.get(String(u._id)) || null,
       worker_trainings: trainByWorker.get(String(u._id)) || null,
       /** Trimmed `worker_addresses.city` for list UIs (All Staff location). */
@@ -468,12 +483,48 @@ class WorkerService {
     }));
   }
 
+  /**
+   * Unified onboarding step for API clients (0–4). Legacy v1 rows map to v2 display without DB write.
+   */
+  _clientOnboardingStep(user) {
+    const v = user.onboarding_schema_version || 1;
+    const s = typeof user.onboarding_step === 'number' ? user.onboarding_step : 0;
+    if (v >= 2) {
+      return Math.min(4, Math.max(0, s));
+    }
+    if (s <= 3) return 0;
+    if (s === 4) return 1;
+    if (s === 5) return 2;
+    if (s === 6 || s === 7) return 3;
+    return 4;
+  }
+
+  /** One-time migrate legacy 8-step counter to consolidated v2 (0–4). */
+  _ensureOnboardingSchemaV2(user) {
+    if ((user.onboarding_schema_version || 1) >= 2) return;
+    const s = typeof user.onboarding_step === 'number' ? user.onboarding_step : 0;
+    if (s <= 3) user.onboarding_step = 0;
+    else if (s === 4) user.onboarding_step = 1;
+    else if (s === 5) user.onboarding_step = 2;
+    else if (s === 6 || s === 7) user.onboarding_step = 3;
+    else user.onboarding_step = 4;
+    user.onboarding_schema_version = 2;
+  }
+
+  _onboardingPutResponse(user) {
+    return {
+      onboarding_step: this._clientOnboardingStep(user),
+      onboarding_schema_version: user.onboarding_schema_version || 2,
+      status: user.status,
+    };
+  }
+
   async getWorker(workerUserId, companyId) {
     const user = await User.findOne({
       _id: workerUserId,
       company_id: companyId,
       role: 'worker',
-    });
+    }).lean();
 
     if (!user) {
       throw new AppError('Worker not found', 404);
@@ -492,34 +543,39 @@ class WorkerService {
       emergencyContact,
       workerTimeOff,
     ] = await Promise.all([
-      WorkerRole.findOne({ worker_id: workerUserId, company_id: companyId }).populate(
-        'roles.company_role_id'
-      ),
-      WorkerTraining.findOne({ worker_id: workerUserId, company_id: companyId }).populate([
-        { path: 'trainings.training_id', select: 'name' },
-        { path: 'trainings.role_ids', select: 'name' },
-      ]),
+      WorkerRole.findOne({ worker_id: workerUserId, company_id: companyId })
+        .populate({ path: 'roles.company_role_id', select: 'name default_hourly_rate' })
+        .lean(),
+      WorkerTraining.findOne({ worker_id: workerUserId, company_id: companyId })
+        .populate([
+          { path: 'trainings.training_id', select: 'name' },
+          { path: 'trainings.role_ids', select: 'name' },
+        ])
+        .lean(),
       WorkerTrainingDocument.find({ worker_id: workerUserId, company_id: companyId }).lean(),
-      WorkerAddress.findOne({ worker_id: workerUserId }),
-      WorkerTaxInfo.findOne({ worker_id: workerUserId }),
-      WorkerBankDetail.findOne({ worker_id: workerUserId }),
-      WorkerWorkingHours.find({ worker_id: workerUserId }),
-      WorkerFile.findOne({ worker_id: workerUserId }),
-      TimeOffRequest.find({ worker_id: workerUserId, status: 'active' }),
-      WorkerEmergencyContact.findOne({ worker_id: workerUserId }),
-      WorkerTimeOff.findOne({ worker_id: workerUserId }),
+      WorkerAddress.findOne({ worker_id: workerUserId }).lean(),
+      WorkerTaxInfo.findOne({ worker_id: workerUserId }).lean(),
+      WorkerBankDetail.findOne({ worker_id: workerUserId }).lean(),
+      WorkerWorkingHours.findOne({ worker_id: workerUserId }).lean(),
+      WorkerFile.findOne({ worker_id: workerUserId }).lean(),
+      TimeOffRequest.find({ worker_id: workerUserId, status: 'active' }).lean(),
+      WorkerEmergencyContact.findOne({ worker_id: workerUserId }).lean(),
+      WorkerTimeOff.findOne({ worker_id: workerUserId }).lean(),
     ]);
 
+    const wtNormalized = this.normalizeWorkerTrainingLean(workerTraining);
+
     return {
-      ...user.toObject(),
+      ...user,
+      onboarding_step: this._clientOnboardingStep(user),
       worker_roles_aggregate: workerRole,
-      worker_trainings_aggregate: workerTraining,
+      worker_trainings_aggregate: wtNormalized,
       worker_training_documents_aggregate: workerTrainingDocuments,
       address,
       tax_info: taxInfo,
       bank_detail: bankDetail,
       emergency_contact: emergencyContact,
-      working_hours: workingHours,
+      working_hours: Array.isArray(workingHours?.availability) ? workingHours.availability : [],
       files: workerFileBundle?.files || [],
       dvla_code: workerFileBundle?.dvla_code,
       dvla_date: workerFileBundle?.dvla_date,
@@ -539,7 +595,11 @@ class WorkerService {
     return true;
   }
 
-  async saveOnboardingContract(workerUserId, companyId, data) {
+  /**
+   * Consolidated step 1: contract acceptance (when onboarding_step === 0), personal info, address,
+   * optional emergency + optional tax/bank (JWT: admin).
+   */
+  async saveOnboardingBasicInfo(workerUserId, companyId, data) {
     const MAX_CONTRACT_LEN = 100000;
     const user = await User.findOne({
       _id: workerUserId,
@@ -551,51 +611,38 @@ class WorkerService {
       throw new AppError('Worker not found', 404);
     }
 
-    if (data.employment_contract_text !== undefined) {
-      const raw = String(data.employment_contract_text ?? '');
-      if (raw.length > MAX_CONTRACT_LEN) {
-        throw new AppError('Contract text exceeds maximum length', 400);
-      }
-      user.employment_contract_text = raw;
-    }
-
-    /** Active workers: persist contract text only (no onboarding step / signature changes here). */
-    if (user.status === 'active') {
-      await user.save();
-      return this.getWorker(workerUserId, companyId);
-    }
-
-    const name = String(data.name || '').trim().replace(/\s+/g, ' ');
-    const expected = `${user.first_name} ${user.last_name}`.trim().replace(/\s+/g, ' ');
-    if (name.toLowerCase() !== expected.toLowerCase()) {
-      throw new AppError('Name does not match worker full name', 400);
-    }
-
-    if (this._advanceOnboardingStepIfExpected(user, 0, 1, { setStatusOnboarding: true })) {
-      user.contract_signed = true;
-      user.contract_signed_at = new Date();
-    }
-
-    await user.save();
-    return this.getWorker(workerUserId, companyId);
-  }
-
-  async saveOnboardingBasicInfo(workerUserId, companyId, data) {
-    const user = await User.findOne({
-      _id: workerUserId,
-      company_id: companyId,
-      role: 'worker',
-    });
-
-    if (!user) {
-      throw new AppError('Worker not found', 404);
-    }
+    this._ensureOnboardingSchemaV2(user);
 
     if (user.status === 'active') {
       throw new AppError('Basic onboarding info cannot be changed for active workers here', 400);
     }
 
-    const email = data.email.trim().toLowerCase();
+    const step = typeof user.onboarding_step === 'number' ? user.onboarding_step : 0;
+
+    if (step === 0) {
+      const sig = String(data.contract_signature_name || '').trim().replace(/\s+/g, ' ');
+      const expected = `${user.first_name} ${user.last_name}`.trim().replace(/\s+/g, ' ');
+      if (!sig || sig.toLowerCase() !== expected.toLowerCase()) {
+        throw new AppError('Name does not match worker full name', 400);
+      }
+      if (data.employment_contract_text !== undefined) {
+        const raw = String(data.employment_contract_text ?? '');
+        if (raw.length > MAX_CONTRACT_LEN) {
+          throw new AppError('Contract text exceeds maximum length', 400);
+        }
+        user.employment_contract_text = raw;
+      }
+      user.contract_signed = true;
+      user.contract_signed_at = new Date();
+      if (user.status === 'invited') {
+        user.status = 'onboarding';
+      }
+    }
+
+    const email = String(data.email || '').trim().toLowerCase();
+    if (!email) {
+      throw new AppError('Email is required', 400);
+    }
     if (email !== user.email) {
       const taken = await User.findOne({
         email,
@@ -607,11 +654,14 @@ class WorkerService {
       user.email = email;
     }
 
-    user.first_name = data.first_name.trim();
-    user.last_name = data.last_name.trim();
-    user.phone = data.phone.trim();
+    user.first_name = String(data.first_name || '').trim();
+    user.last_name = String(data.last_name || '').trim();
+    if (!user.first_name || !user.last_name) {
+      throw new AppError('First name and last name are required', 400);
+    }
+    user.phone = data.phone != null ? String(data.phone).trim() : '';
 
-    const a = data.address || {};
+    const a = data.address && typeof data.address === 'object' ? data.address : {};
     await WorkerAddress.findOneAndUpdate(
       { worker_id: user._id },
       {
@@ -626,20 +676,121 @@ class WorkerService {
       { upsert: true, new: true, runValidators: true }
     );
 
-    this._advanceOnboardingStepIfExpected(user, 1, 2);
+    const em = data.emergency_contact;
+    if (em && typeof em === 'object') {
+      const contactName = em.contact_name != null ? String(em.contact_name).trim() : '';
+      const emPhone = em.phone != null ? String(em.phone).trim() : '';
+      const relationship = em.relationship != null ? String(em.relationship).trim() : '';
+      const addr = em.address && typeof em.address === 'object' ? em.address : {};
+      const emAddr1 = addr.address_line1 != null ? String(addr.address_line1).trim() : '';
+      const emAddr2 = addr.address_line2 != null ? String(addr.address_line2).trim() : '';
+      const emCity = addr.city != null ? String(addr.city).trim() : '';
+      const emState = addr.state != null ? String(addr.state).trim() : '';
+      const emPost = addr.postal_code != null ? String(addr.postal_code).trim() : '';
+      let emCountry = addr.country != null ? String(addr.country).trim() : '';
+      if (!emCountry) emCountry = 'USA';
+
+      const anyEmergency =
+        contactName ||
+        emPhone ||
+        relationship ||
+        emAddr1 ||
+        emAddr2 ||
+        emCity ||
+        emState ||
+        emPost ||
+        (emCountry && emCountry !== 'USA');
+      if (anyEmergency) {
+        if (!contactName || !emPhone || !relationship) {
+          throw new AppError(
+            'Emergency contact requires name, phone, and relationship when any field is provided',
+            400
+          );
+        }
+        await WorkerEmergencyContact.findOneAndUpdate(
+          { worker_id: user._id },
+          {
+            worker_id: user._id,
+            contact_name: contactName,
+            phone: emPhone,
+            relationship,
+            address_line1: emAddr1,
+            address_line2: emAddr2,
+            city: emCity,
+            state: emState,
+            postal_code: emPost,
+            country: emCountry,
+          },
+          { upsert: true, new: true, runValidators: true }
+        );
+      } else {
+        await WorkerEmergencyContact.deleteOne({ worker_id: user._id });
+      }
+    }
+
+    const tb = data.tax_bank;
+    if (tb && typeof tb === 'object') {
+      const nationalId = tb.national_id != null ? String(tb.national_id).trim() : '';
+      const taxNumber = tb.tax_number != null ? String(tb.tax_number).trim() : '';
+      const bankName = tb.bank_name != null ? String(tb.bank_name).trim() : '';
+      const accountName = tb.account_name != null ? String(tb.account_name).trim() : '';
+      const accountNumber = tb.account_number != null ? String(tb.account_number).trim() : '';
+      const routing = tb.routing_number != null ? String(tb.routing_number).trim() : '';
+
+      const anyBank =
+        nationalId ||
+        taxNumber ||
+        bankName ||
+        accountName ||
+        accountNumber ||
+        routing;
+      if (anyBank) {
+        if (!nationalId || !bankName || !accountName || !accountNumber || !routing) {
+          throw new AppError(
+            'Tax and bank require NI number, bank name, account name, sort code, and account number when any field is provided',
+            400
+          );
+        }
+        await Promise.all([
+          WorkerTaxInfo.findOneAndUpdate(
+            { worker_id: user._id },
+            {
+              worker_id: user._id,
+              national_id: nationalId,
+              tax_number: taxNumber,
+            },
+            { upsert: true, new: true, runValidators: true }
+          ),
+          WorkerBankDetail.findOneAndUpdate(
+            { worker_id: user._id },
+            {
+              worker_id: user._id,
+              bank_name: bankName,
+              account_name: accountName,
+              account_number: accountNumber,
+              routing_number: routing,
+            },
+            { upsert: true, new: true, runValidators: true }
+          ),
+        ]);
+      } else {
+        await Promise.all([
+          WorkerTaxInfo.deleteOne({ worker_id: user._id }),
+          WorkerBankDetail.deleteOne({ worker_id: user._id }),
+        ]);
+      }
+    }
+
+    if (step === 0) {
+      user.onboarding_step = 1;
+    }
+
     await user.save();
-    return this.getWorker(workerUserId, companyId);
+    return this._onboardingPutResponse(user);
   }
 
-  _pickAddressField(data, nestedKey, flatKey) {
-    const nested = data.address && typeof data.address === 'object' ? data.address : {};
-    const fromNested = nested[nestedKey];
-    const fromFlat = data[flatKey];
-    const raw = fromNested !== undefined && fromNested !== null ? fromNested : fromFlat;
-    return raw != null ? String(raw).trim() : '';
-  }
-
-  async saveOnboardingEmergencyContact(workerUserId, companyId, data) {
+  /** Standard Mon–Fri hours + time-off notes / entries (JWT: admin). */
+  async saveOnboardingWorkingHours(workerUserId, companyId, data) {
     const user = await User.findOne({
       _id: workerUserId,
       company_id: companyId,
@@ -650,100 +801,41 @@ class WorkerService {
       throw new AppError('Worker not found', 404);
     }
 
-    if (user.status === 'active') {
-      throw new AppError('Emergency contact cannot be changed for active workers here', 400);
-    }
-
-    const addressLine1 = this._pickAddressField(data, 'address_line1', 'address_line1');
-    const addressLine2 = this._pickAddressField(data, 'address_line2', 'address_line2');
-    const city = this._pickAddressField(data, 'city', 'city');
-    const state = this._pickAddressField(data, 'state', 'state');
-    const postalCode = this._pickAddressField(data, 'postal_code', 'postal_code');
-    let country = this._pickAddressField(data, 'country', 'country');
-    if (!country) {
-      country = 'USA';
-    }
-
-    await WorkerEmergencyContact.findOneAndUpdate(
-      { worker_id: user._id },
-      {
-        worker_id: user._id,
-        contact_name: data.contact_name.trim(),
-        phone: data.phone.trim(),
-        relationship: data.relationship.trim(),
-        address_line1: addressLine1,
-        address_line2: addressLine2,
-        city,
-        state,
-        postal_code: postalCode,
-        country,
-      },
-      { upsert: true, new: true, runValidators: true }
-    );
-
-    this._advanceOnboardingStepIfExpected(user, 2, 3);
-    await user.save();
-    return this.getWorker(workerUserId, companyId);
-  }
-
-  async saveOnboardingTaxBank(workerUserId, companyId, data) {
-    const user = await User.findOne({
-      _id: workerUserId,
-      company_id: companyId,
-      role: 'worker',
-    });
-
-    if (!user) {
-      throw new AppError('Worker not found', 404);
-    }
-
-    if (user.status === 'active') {
-      throw new AppError('Tax and bank details cannot be changed for active workers here', 400);
-    }
-
-    const taxNumber = data.tax_number != null ? String(data.tax_number).trim() : '';
-
-    await WorkerTaxInfo.findOneAndUpdate(
-      { worker_id: user._id },
-      {
-        worker_id: user._id,
-        national_id: data.national_id.trim(),
-        tax_number: taxNumber,
-      },
-      { upsert: true, new: true, runValidators: true }
-    );
-
-    await WorkerBankDetail.findOneAndUpdate(
-      { worker_id: user._id },
-      {
-        worker_id: user._id,
-        bank_name: data.bank_name.trim(),
-        account_name: data.account_name.trim(),
-        account_number: data.account_number.trim(),
-        routing_number: data.routing_number.trim(),
-      },
-      { upsert: true, new: true, runValidators: true }
-    );
-
-    this._advanceOnboardingStepIfExpected(user, 3, 4);
-    await user.save();
-    return this.getWorker(workerUserId, companyId);
-  }
-
-  async saveOnboardingTimeOff(workerUserId, companyId, data) {
-    const user = await User.findOne({
-      _id: workerUserId,
-      company_id: companyId,
-      role: 'worker',
-    });
-
-    if (!user) {
-      throw new AppError('Worker not found', 404);
-    }
+    this._ensureOnboardingSchemaV2(user);
 
     if (user.status === 'active') {
       throw new AppError('Time off cannot be changed for active workers here', 400);
     }
+
+    if (user.onboarding_step < 1) {
+      throw new AppError('Complete basic information first', 400);
+    }
+
+    const availability = Array.isArray(data.availability) ? data.availability : [];
+    for (let i = 0; i < availability.length; i += 1) {
+      const row = availability[i];
+      const st = String(row.start_time || '').trim();
+      const et = String(row.end_time || '').trim();
+      if (!st || !et) {
+        throw new AppError(`Working hours: start and end required for row ${i + 1}`, 400);
+      }
+      if (st >= et) {
+        throw new AppError(`Working hours: end time must be after start time (row ${i + 1})`, 400);
+      }
+    }
+
+    await WorkerWorkingHours.findOneAndUpdate(
+      { worker_id: user._id },
+      {
+        worker_id: user._id,
+        availability: availability.map((h) => ({
+          day_of_week: Number(h.day_of_week),
+          start_time: String(h.start_time || '').trim(),
+          end_time: String(h.end_time || '').trim(),
+        })),
+      },
+      { upsert: true, new: true, runValidators: true }
+    );
 
     const entries = Array.isArray(data.entries) ? data.entries : [];
     const normalizedEntries = entries.map((entry, index) => {
@@ -778,12 +870,16 @@ class WorkerService {
       { upsert: true, new: true, runValidators: true }
     );
 
-    this._advanceOnboardingStepIfExpected(user, 4, 5);
+    if (user.onboarding_step === 1) {
+      user.onboarding_step = 2;
+    }
+
     await user.save();
-    return this.getWorker(workerUserId, companyId);
+    return this._onboardingPutResponse(user);
   }
 
-  async saveOnboardingDocuments(workerUserId, companyId) {
+  /** Validates document bundle + training completion rules, advances 2 → 3 (JWT: admin). */
+  async saveOnboardingDocumentsTrainings(workerUserId, companyId) {
     const user = await User.findOne({
       _id: workerUserId,
       company_id: companyId,
@@ -793,36 +889,64 @@ class WorkerService {
     if (!user) {
       throw new AppError('Worker not found', 404);
     }
+
+    this._ensureOnboardingSchemaV2(user);
 
     if (user.status === 'active') {
       throw new AppError('Documents cannot be changed for active workers here', 400);
     }
 
-    this._advanceOnboardingStepIfExpected(user, 5, 6);
-    await user.save();
-    return this.getWorker(workerUserId, companyId);
-  }
-
-  async saveOnboardingTraining(workerUserId, companyId) {
-    const user = await User.findOne({
-      _id: workerUserId,
-      company_id: companyId,
-      role: 'worker',
-    });
-
-    if (!user) {
-      throw new AppError('Worker not found', 404);
+    if (user.onboarding_step < 2) {
+      throw new AppError('Complete working hours first', 400);
     }
 
-    if (user.status === 'active') {
-      throw new AppError('Training cannot be changed for active workers here', 400);
+    const [bundle, wtDocBundles, wt] = await Promise.all([
+      WorkerFile.findOne({ worker_id: user._id }).lean(),
+      WorkerTrainingDocument.find({ worker_id: user._id, company_id: companyId }).lean(),
+      WorkerTraining.findOne({ worker_id: user._id, company_id: companyId }).lean(),
+    ]);
+
+    const files = bundle?.files || [];
+    const typesPresent = new Set(files.map((f) => f.file_type));
+    if (files.length > 0) {
+      for (const t of ADMIN_ONBOARDING_REQUIRED_FILE_TYPES) {
+        if (!typesPresent.has(t)) {
+          throw new AppError(`Missing required document upload: ${t}`, 400);
+        }
+      }
     }
 
-    // Step 7 is the Review screen. Do not move to pending_approval here.
-    // The worker/admin should only transition to pending_approval when Step 8 is completed.
-    this._advanceOnboardingStepIfExpected(user, 6, 7);
+    const hasCode = bundle?.dvla_code != null && String(bundle.dvla_code).trim() !== '';
+    const dvlaDateRaw = bundle?.dvla_date;
+    const hasDate =
+      dvlaDateRaw != null && !Number.isNaN(new Date(dvlaDateRaw).getTime());
+    if (hasCode !== hasDate) {
+      throw new AppError('DVLA code and date must both be set or both empty', 400);
+    }
+
+    const docByTrainingEntry = new Map(
+      wtDocBundles.map((b) => [String(b.worker_training_id), b])
+    );
+    const trainings = wt?.trainings || [];
+    for (const t of trainings) {
+      if (t.status === 'completed') {
+        const b = docByTrainingEntry.get(String(t._id));
+        const hasTrainingDoc = b?.documents?.some((d) => d.file_url);
+        if (!hasTrainingDoc) {
+          throw new AppError(
+            'Each completed training must have an uploaded training document',
+            400
+          );
+        }
+      }
+    }
+
+    if (user.onboarding_step === 2) {
+      user.onboarding_step = 3;
+    }
+
     await user.save();
-    return this.getWorker(workerUserId, companyId);
+    return this._onboardingPutResponse(user);
   }
 
   async completeOnboarding(workerUserId, companyId) {
@@ -836,18 +960,30 @@ class WorkerService {
       throw new AppError('Worker not found', 404);
     }
 
+    this._ensureOnboardingSchemaV2(user);
+
     if (user.status === 'active') {
       throw new AppError('Onboarding cannot be changed for active workers here', 400);
     }
 
-    const advanced = this._advanceOnboardingStepIfExpected(user, 7, 8);
-    // Only change onboarding → pending_approval when completing step 8,
-    // and only if the last onboarding_step in DB was exactly 7.
-    if (advanced && user.status === 'onboarding') {
+    if (user.onboarding_step < 3) {
+      throw new AppError('Complete all onboarding steps before submitting', 400);
+    }
+
+    if (user.onboarding_step >= 4) {
+      return this._onboardingPutResponse(user);
+    }
+
+    if (user.onboarding_step !== 3) {
+      throw new AppError('Invalid onboarding state', 400);
+    }
+
+    user.onboarding_step = 4;
+    if (user.status === 'onboarding') {
       user.status = 'pending_approval';
     }
     await user.save();
-    return this.getWorker(workerUserId, companyId);
+    return this._onboardingPutResponse(user);
   }
 
   async updateWorker(workerUserId, companyId, data) {
@@ -1304,17 +1440,20 @@ class WorkerService {
         }
         break;
       case 5:
-        if (data.availability && data.availability.length > 0) {
-          await WorkerWorkingHours.deleteMany({ worker_id: workerUserId });
-          await WorkerWorkingHours.create(
-            data.availability.map((h) => ({
-              worker_id: workerUserId,
-              day_of_week: h.day_of_week,
-              start_time: h.start_time,
-              end_time: h.end_time,
-            }))
-          );
-        }
+        await WorkerWorkingHours.findOneAndUpdate(
+          { worker_id: workerUserId },
+          {
+            worker_id: workerUserId,
+            availability: Array.isArray(data.availability)
+              ? data.availability.map((h) => ({
+                  day_of_week: Number(h.day_of_week),
+                  start_time: String(h.start_time || '').trim(),
+                  end_time: String(h.end_time || '').trim(),
+                }))
+              : [],
+          },
+          { upsert: true, new: true, runValidators: true }
+        );
         break;
       case 6:
         break;
