@@ -24,6 +24,7 @@ router.use(requireRole('worker'));
  *         $ref: '#/components/responses/Unauthorized'
  */
 router.get('/profile', workerController.getMyProfile);
+router.put('/profile', workerController.updateMyProfile);
 
 router.get('/files/:fileId/view-url', workerController.getMyWorkerFileViewUrl);
 router.get('/training-documents/:docId/view-url', workerController.getMyTrainingDocumentViewUrl);
