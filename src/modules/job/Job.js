@@ -24,7 +24,7 @@ const jobSchema = new mongoose.Schema({
   status: {
     type: String,
     enum: ['draft', 'active', 'inactive', 'completed', 'cancelled'],
-    default: 'draft'
+    default: 'active'
   }
 }, {
   timestamps: true
