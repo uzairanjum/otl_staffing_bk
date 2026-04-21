@@ -36,6 +36,21 @@ const ADMIN_ONBOARDING_REQUIRED_FILE_TYPES = [
 ];
 
 class WorkerService {
+  async changeMyPassword(workerUserId, companyId, currentPassword, newPassword) {
+    const user = await User.findOne({ _id: workerUserId, company_id: companyId, role: 'worker' });
+    if (!user) {
+      throw new AppError('Worker not found', 404);
+    }
+    const isValid = await user.comparePassword(currentPassword);
+    if (!isValid) {
+      throw new AppError('Current password is incorrect', 400);
+    }
+    user.password_hash = newPassword;
+    user.first_login = false;
+    await user.save();
+    return { message: 'Password changed successfully' };
+  }
+
   generateTempPassword() {
     return uuidv4().slice(0, 8) + 'A1!';
   }
@@ -613,10 +628,6 @@ class WorkerService {
 
     this._ensureOnboardingSchemaV2(user);
 
-    if (user.status === 'active') {
-      throw new AppError('Basic onboarding info cannot be changed for active workers here', 400);
-    }
-
     const step = typeof user.onboarding_step === 'number' ? user.onboarding_step : 0;
 
     if (step === 0) {
@@ -803,10 +814,6 @@ class WorkerService {
 
     this._ensureOnboardingSchemaV2(user);
 
-    if (user.status === 'active') {
-      throw new AppError('Time off cannot be changed for active workers here', 400);
-    }
-
     if (user.onboarding_step < 1) {
       throw new AppError('Complete basic information first', 400);
     }
@@ -814,6 +821,8 @@ class WorkerService {
     const availability = Array.isArray(data.availability) ? data.availability : [];
     for (let i = 0; i < availability.length; i += 1) {
       const row = availability[i];
+      const isActive = row.active !== false;
+      if (!isActive) continue;
       const st = String(row.start_time || '').trim();
       const et = String(row.end_time || '').trim();
       if (!st || !et) {
@@ -830,8 +839,9 @@ class WorkerService {
         worker_id: user._id,
         availability: availability.map((h) => ({
           day_of_week: Number(h.day_of_week),
-          start_time: String(h.start_time || '').trim(),
-          end_time: String(h.end_time || '').trim(),
+          active: h.active !== false,
+          start_time: h.active === false ? '' : String(h.start_time || '').trim(),
+          end_time: h.active === false ? '' : String(h.end_time || '').trim(),
         })),
       },
       { upsert: true, new: true, runValidators: true }
@@ -892,10 +902,6 @@ class WorkerService {
 
     this._ensureOnboardingSchemaV2(user);
 
-    if (user.status === 'active') {
-      throw new AppError('Documents cannot be changed for active workers here', 400);
-    }
-
     if (user.onboarding_step < 2) {
       throw new AppError('Complete working hours first', 400);
     }
@@ -920,6 +926,9 @@ class WorkerService {
     const dvlaDateRaw = bundle?.dvla_date;
     const hasDate =
       dvlaDateRaw != null && !Number.isNaN(new Date(dvlaDateRaw).getTime());
+    if (files.length > 0 && (!hasCode || !hasDate)) {
+      throw new AppError('DVLA code and date are required when document uploads are provided', 400);
+    }
     if (hasCode !== hasDate) {
       throw new AppError('DVLA code and date must both be set or both empty', 400);
     }
@@ -961,10 +970,6 @@ class WorkerService {
     }
 
     this._ensureOnboardingSchemaV2(user);
-
-    if (user.status === 'active') {
-      throw new AppError('Onboarding cannot be changed for active workers here', 400);
-    }
 
     if (user.onboarding_step < 3) {
       throw new AppError('Complete all onboarding steps before submitting', 400);
@@ -1447,8 +1452,9 @@ class WorkerService {
             availability: Array.isArray(data.availability)
               ? data.availability.map((h) => ({
                   day_of_week: Number(h.day_of_week),
-                  start_time: String(h.start_time || '').trim(),
-                  end_time: String(h.end_time || '').trim(),
+                  active: h.active !== false,
+                  start_time: h.active === false ? '' : String(h.start_time || '').trim(),
+                  end_time: h.active === false ? '' : String(h.end_time || '').trim(),
                 }))
               : [],
           },

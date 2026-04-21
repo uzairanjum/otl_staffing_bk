@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const workerController = require('./worker.controller');
+const { uploadWorkerFileSingle } = require('./worker.upload.middleware');
 const { authenticate, requireRole } = require('../../common/middleware/auth.middleware');
 const { validate, schemas } = require('../../common/middleware/validation.middleware');
 
@@ -25,9 +26,41 @@ router.use(requireRole('worker'));
  */
 router.get('/profile', workerController.getMyProfile);
 router.put('/profile', workerController.updateMyProfile);
+router.post('/change-password', validate(schemas.changePassword), workerController.changeMyPassword);
+router.put(
+  '/onboarding/basic-info',
+  validate(schemas.workerOnboardingBasicInfo),
+  workerController.saveMyOnboardingBasicInfo
+);
+router.put(
+  '/onboarding/working-hours',
+  validate(schemas.workerOnboardingWorkingHours),
+  workerController.saveMyOnboardingWorkingHours
+);
+router.put(
+  '/onboarding/documents-trainings',
+  validate(schemas.workerOnboardingDocumentsTrainings),
+  workerController.saveMyOnboardingDocumentsTrainings
+);
+router.put(
+  '/onboarding/complete',
+  validate(schemas.workerOnboardingComplete),
+  workerController.completeMyOnboarding
+);
+
+router.put('/files/meta', validate(schemas.workerFileMeta), workerController.updateMyWorkerFilesMeta);
+router.get('/files', workerController.getMyWorkerFiles);
+router.post('/files/upload', uploadWorkerFileSingle, workerController.uploadMyWorkerFileMultipart);
+router.post('/files', validate(schemas.workerFileUpload), workerController.uploadMyWorkerFile);
+router.delete('/files/:fileId', workerController.deleteMyWorkerFile);
 
 router.get('/files/:fileId/view-url', workerController.getMyWorkerFileViewUrl);
 router.get('/training-documents/:docId/view-url', workerController.getMyTrainingDocumentViewUrl);
+router.post(
+  '/training-documents/upload',
+  uploadWorkerFileSingle,
+  workerController.uploadMyWorkerTrainingDocumentMultipart
+);
 
 /**
  * @swagger

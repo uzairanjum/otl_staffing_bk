@@ -139,8 +139,17 @@ const schemas = {
       .items(
         Joi.object({
           day_of_week: Joi.number().integer().min(0).max(6).required(),
-          start_time: Joi.string().trim().required(),
-          end_time: Joi.string().trim().required(),
+          active: Joi.boolean().default(true),
+          start_time: Joi.when('active', {
+            is: false,
+            then: Joi.string().trim().allow('', null).optional(),
+            otherwise: Joi.string().trim().required(),
+          }),
+          end_time: Joi.when('active', {
+            is: false,
+            then: Joi.string().trim().allow('', null).optional(),
+            otherwise: Joi.string().trim().required(),
+          }),
         })
       )
       .default([]),
