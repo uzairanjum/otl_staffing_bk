@@ -7,11 +7,12 @@ const RoleCategory = require('./modules/company/RoleCategory');
 const CompanyRole = require('./modules/company/CompanyRole');
 const TrainingCategory = require('./modules/company/TrainingCategory');
 const Training = require('./modules/company/Training');
+const logger = require('./config/logger');
 
 const seedCompany = async () => {
   try {
     await connectDB();
-    console.log('Connected to database');
+    logger.info('Connected to database');
 
     let company = await Company.findOne({ name: 'OTL Staffing' });
     
@@ -22,9 +23,9 @@ const seedCompany = async () => {
         phone: '+1234567890',
         status: 'active'
       });
-      console.log('Company created:', company.name);
+      logger.info('Company created', { companyName: company.name });
     } else {
-      console.log('Company already exists:', company.name);
+      logger.info('Company already exists', { companyName: company.name });
     }
 
     const adminPassword = 'Admin123!';
@@ -38,10 +39,13 @@ const seedCompany = async () => {
         role: 'admin',
         first_login: true
       });
-      console.log('Admin user created:', 'admin@otlstaffing.com');
-      console.log('Temporary password:', adminPassword);
+      logger.info('Admin user created', { email: 'admin@otlstaffing.com' });
+      logger.warn('Temporary admin password generated', {
+        email: 'admin@otlstaffing.com',
+        requiresPasswordChange: true
+      });
     } else {
-      console.log('Admin user already exists');
+      logger.info('Admin user already exists', { email: 'admin@otlstaffing.com' });
     }
 
     const existingWorkingHours = await CompanyWorkingHours.findOne({ company_id: company._id });
@@ -59,9 +63,9 @@ const seedCompany = async () => {
       await CompanyWorkingHours.insertMany(
         defaultHours.map(h => ({ ...h, company_id: company._id }))
       );
-      console.log('Default working hours created');
+      logger.info('Default working hours created');
     } else {
-      console.log('Working hours already exist');
+      logger.info('Working hours already exist');
     }
 
     const roleCategories = [
@@ -78,9 +82,9 @@ const seedCompany = async () => {
       let existingCat = await RoleCategory.findOne({ company_id: company._id, name: cat.name });
       if (!existingCat) {
         existingCat = await RoleCategory.create({ ...cat, company_id: company._id });
-        console.log(`Role category created: ${cat.name}`);
+        logger.info('Role category created', { roleCategory: cat.name });
       } else {
-        console.log(`Role category already exists: ${cat.name}`);
+        logger.info('Role category already exists', { roleCategory: cat.name });
       }
       createdRoleCategories[cat.name] = existingCat._id;
     }
@@ -109,9 +113,9 @@ const seedCompany = async () => {
           description: role.description,
           is_active: true
         });
-        console.log(`Company role created: ${role.name}`);
+        logger.info('Company role created', { roleName: role.name });
       } else {
-        console.log(`Company role already exists: ${role.name}`);
+        logger.info('Company role already exists', { roleName: role.name });
       }
     }
 
@@ -127,9 +131,9 @@ const seedCompany = async () => {
       let existingCat = await TrainingCategory.findOne({ company_id: company._id, name: cat.name });
       if (!existingCat) {
         existingCat = await TrainingCategory.create({ ...cat, company_id: company._id });
-        console.log(`Training category created: ${cat.name}`);
+        logger.info('Training category created', { trainingCategory: cat.name });
       } else {
-        console.log(`Training category already exists: ${cat.name}`);
+        logger.info('Training category already exists', { trainingCategory: cat.name });
       }
       createdTrainingCategories[cat.name] = existingCat._id;
     }
@@ -214,21 +218,23 @@ const seedCompany = async () => {
           validity: training.validity,
           is_active: true
         });
-        console.log(`Training created: ${training.name}`);
+        logger.info('Training created', { trainingName: training.name });
       } else {
-        console.log(`Training already exists: ${training.name}`);
+        logger.info('Training already exists', { trainingName: training.name });
       }
     }
 
-    console.log('\n=== Seed Complete ===');
-    console.log('Company: OTL Staffing');
-    console.log('Admin Email: admin@otlstaffing.com');
-    console.log('Admin Password: Admin123!');
-    console.log('=====================\n');
+    logger.info('Seed complete', {
+      company: 'OTL Staffing',
+      adminEmail: 'admin@otlstaffing.com'
+    });
 
     process.exit(0);
   } catch (error) {
-    console.error('Seed error:', error);
+    logger.error('Seed failed', {
+      message: error.message,
+      stack: error.stack
+    });
     process.exit(1);
   }
 };

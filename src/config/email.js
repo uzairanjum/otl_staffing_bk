@@ -1,5 +1,6 @@
 const nodemailer = require('nodemailer');
 const config = require('./index');
+const logger = require('./logger');
 
 const expiryLine = (data) => {
   const m = data.expiryMinutes ?? config.passwordReset?.expiryMinutes ?? 15;
@@ -30,10 +31,19 @@ const sendEmail = async (to, subject, html, text) => {
       text
     });
 
-    console.log(`Email sent: ${info.messageId}`);
+    logger.info('Email sent', {
+      messageId: info.messageId,
+      to,
+      subject
+    });
     return info;
   } catch (error) {
-    console.error(`Email send error: ${error.message}`);
+    logger.error('Email send failed', {
+      message: error.message,
+      stack: error.stack,
+      to,
+      subject
+    });
     throw error;
   }
 };

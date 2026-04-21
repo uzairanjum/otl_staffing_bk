@@ -1,5 +1,6 @@
 const admin = require('firebase-admin');
 const config = require('./index');
+const logger = require('./logger');
 
 const initializeFirebase = () => {
   if (admin.apps.length === 0) {
@@ -33,10 +34,13 @@ const sendFCM = async (token, title, body, data = {}) => {
     };
 
     const response = await admin.messaging().send(message);
-    console.log('FCM sent successfully:', response);
+    logger.info('FCM sent successfully', { messageId: response });
     return response;
   } catch (error) {
-    console.error('FCM send error:', error.message);
+    logger.error('FCM send failed', {
+      message: error.message,
+      stack: error.stack
+    });
     throw error;
   }
 };
@@ -58,10 +62,16 @@ const sendMulticastFCM = async (tokens, title, body, data = {}) => {
     };
 
     const response = await admin.messaging().sendEachForMulticast(message);
-    console.log(`FCM sent: ${response.successCount} success, ${response.failureCount} failed`);
+    logger.info('FCM multicast result', {
+      successCount: response.successCount,
+      failureCount: response.failureCount
+    });
     return response;
   } catch (error) {
-    console.error('FCM multicast error:', error.message);
+    logger.error('FCM multicast failed', {
+      message: error.message,
+      stack: error.stack
+    });
     throw error;
   }
 };

@@ -7,6 +7,7 @@
 require('dotenv').config({ path: require('path').join(__dirname, '../.env') });
 const mongoose = require('mongoose');
 const config = require('../src/config');
+const logger = require('../src/config/logger');
 
 async function run() {
   await mongoose.connect(config.mongodb.uri);
@@ -17,7 +18,7 @@ async function run() {
     .toArray();
 
   if (legacy.length === 0) {
-    console.log('No legacy worker_files documents found. Nothing to do.');
+    logger.info('No legacy worker_files documents found; nothing to migrate');
     await mongoose.disconnect();
     return;
   }
@@ -61,11 +62,17 @@ async function run() {
     }
   }
 
-  console.log(`Migrated ${legacy.length} legacy file row(s) across ${byWorker.size} worker(s).`);
+  logger.info('Legacy worker_files migration completed', {
+    migratedRows: legacy.length,
+    workerCount: byWorker.size
+  });
   await mongoose.disconnect();
 }
 
 run().catch((e) => {
-  console.error(e);
+  logger.error('Legacy worker_files migration failed', {
+    message: e.message,
+    stack: e.stack
+  });
   process.exit(1);
 });

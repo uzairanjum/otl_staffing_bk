@@ -81,88 +81,37 @@ class WorkerController {
 
   async saveOnboardingBasicInfo(req, res, next) {
     try {
-      const worker = await workerService.saveOnboardingBasicInfo(
+      const payload = await workerService.saveOnboardingBasicInfo(
         req.params.id,
         req.company_id,
         req.body
       );
-      res.json(worker);
+      res.json(payload);
     } catch (error) {
       next(new AppError(error.message, error.statusCode || 500));
     }
   }
 
-  async saveOnboardingContract(req, res, next) {
+  async saveOnboardingWorkingHours(req, res, next) {
     try {
-      const worker = await workerService.saveOnboardingContract(
+      const payload = await workerService.saveOnboardingWorkingHours(
         req.params.id,
         req.company_id,
         req.body
       );
-      res.json(worker);
+      res.json(payload);
     } catch (error) {
       next(new AppError(error.message, error.statusCode || 500));
     }
   }
 
-  async saveOnboardingEmergencyContact(req, res, next) {
+  async saveOnboardingDocumentsTrainings(req, res, next) {
     try {
-      const worker = await workerService.saveOnboardingEmergencyContact(
-        req.params.id,
-        req.company_id,
-        req.body
-      );
-      res.json(worker);
-    } catch (error) {
-      next(new AppError(error.message, error.statusCode || 500));
-    }
-  }
-
-  async saveOnboardingTaxBank(req, res, next) {
-    try {
-      const worker = await workerService.saveOnboardingTaxBank(
-        req.params.id,
-        req.company_id,
-        req.body
-      );
-      res.json(worker);
-    } catch (error) {
-      next(new AppError(error.message, error.statusCode || 500));
-    }
-  }
-
-  async saveOnboardingTimeOff(req, res, next) {
-    try {
-      const worker = await workerService.saveOnboardingTimeOff(
-        req.params.id,
-        req.company_id,
-        req.body
-      );
-      res.json(worker);
-    } catch (error) {
-      next(new AppError(error.message, error.statusCode || 500));
-    }
-  }
-
-  async saveOnboardingDocuments(req, res, next) {
-    try {
-      const worker = await workerService.saveOnboardingDocuments(
+      const payload = await workerService.saveOnboardingDocumentsTrainings(
         req.params.id,
         req.company_id
       );
-      res.json(worker);
-    } catch (error) {
-      next(new AppError(error.message, error.statusCode || 500));
-    }
-  }
-
-  async saveOnboardingTraining(req, res, next) {
-    try {
-      const worker = await workerService.saveOnboardingTraining(
-        req.params.id,
-        req.company_id
-      );
-      res.json(worker);
+      res.json(payload);
     } catch (error) {
       next(new AppError(error.message, error.statusCode || 500));
     }
@@ -170,11 +119,8 @@ class WorkerController {
 
   async completeOnboarding(req, res, next) {
     try {
-      const worker = await workerService.completeOnboarding(
-        req.params.id,
-        req.company_id
-      );
-      res.json(worker);
+      const payload = await workerService.completeOnboarding(req.params.id, req.company_id);
+      res.json(payload);
     } catch (error) {
       next(new AppError(error.message, error.statusCode || 500));
     }

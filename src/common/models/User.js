@@ -69,6 +69,16 @@ const userSchema = new mongoose.Schema({
     max: 8,
     default: 0
   },
+  /**
+   * 1 = legacy 8-substep admin wizard (0–8 step counter).
+   * 2 = consolidated 4-step flow (onboarding_step 0–4).
+   */
+  onboarding_schema_version: {
+    type: Number,
+    default: 1,
+    min: 1,
+    max: 2
+  },
   contract_signed: {
     type: Boolean,
     default: false
