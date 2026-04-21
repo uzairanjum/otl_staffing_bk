@@ -70,10 +70,14 @@ class SolarWindsSyslogTransport extends Transport {
     this.connecting = false;
     this.queue = [];
     this.maxQueueSize = options.maxQueueSize || 500;
+    this.reconnectDelayMs = options.reconnectDelayMs || 1000;
+    this.maxReconnectDelayMs = options.maxReconnectDelayMs || 30000;
+    this.reconnectTimer = null;
+    this.lastErrorAt = 0;
   }
 
   connect() {
-    if (this.socket || this.connecting) return;
+    if (this.socket || this.connecting || this.reconnectTimer) return;
     this.connecting = true;
 
     this.socket = tls.connect(
@@ -84,19 +88,61 @@ class SolarWindsSyslogTransport extends Transport {
       },
       () => {
         this.connecting = false;
+        this.reconnectDelayMs = 1000;
         this.flushQueue();
       }
     );
 
     this.socket.on('error', (err) => {
-      this.connecting = false;
-      this.socket = null;
-      this.emit('error', err);
+      this.handleSocketError(err);
     });
 
     this.socket.on('close', () => {
-      this.socket = null;
+      this.resetSocket();
+      this.scheduleReconnect();
     });
+
+    this.socket.on('end', () => {
+      this.resetSocket();
+      this.scheduleReconnect();
+    });
+  }
+
+  reportTransportError(err) {
+    // Prevent noisy log storms while still surfacing recurring transport failures.
+    const now = Date.now();
+    if (now - this.lastErrorAt >= 2000) {
+      this.lastErrorAt = now;
+      process.stderr.write(`[SolarWinds] transport error: ${err?.message || 'unknown error'}\n`);
+    }
+  }
+
+  resetSocket() {
+    if (!this.socket) return;
+    this.socket.removeAllListeners('error');
+    this.socket.removeAllListeners('close');
+    this.socket.removeAllListeners('end');
+    this.socket = null;
+    this.connecting = false;
+  }
+
+  handleSocketError(err) {
+    this.reportTransportError(err);
+    this.resetSocket();
+    this.scheduleReconnect();
+  }
+
+  scheduleReconnect() {
+    if (this.reconnectTimer) return;
+    const delay = this.reconnectDelayMs;
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null;
+      this.connect();
+    }, delay);
+    if (typeof this.reconnectTimer.unref === 'function') {
+      this.reconnectTimer.unref();
+    }
+    this.reconnectDelayMs = Math.min(this.reconnectDelayMs * 2, this.maxReconnectDelayMs);
   }
 
   flushQueue() {
@@ -157,9 +203,11 @@ class SolarWindsSyslogTransport extends Transport {
     }
 
     try {
-      this.socket.write(line);
+      this.socket.write(line, (err) => {
+        if (err) this.handleSocketError(err);
+      });
     } catch (err) {
-      this.emit('error', err);
+      this.handleSocketError(err);
     }
 
     if (callback) callback();
@@ -186,7 +234,7 @@ if (
     level: config.logging.level,
     token: config.logging.papertrail.token,
     structuredDataId: config.logging.papertrail.structuredDataId,
-    handleExceptions: true
+    handleExceptions: false
   });
 
   solarWindsTransport.on('error', (err) => {
@@ -202,7 +250,7 @@ if (
     program: config.logging.program,
     level: config.logging.level,
     format: papertrailFormat,
-    handleExceptions: true,
+    handleExceptions: false,
     colorize: false
   });
 

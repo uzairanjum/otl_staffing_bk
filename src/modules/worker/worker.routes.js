@@ -215,13 +215,6 @@ router.put('/:id', authenticate, requireRole('admin'), workerController.updateWo
  */
 router.delete('/:id', authenticate, requireRole('admin'), workerController.deleteWorker);
 router.put(
-  '/:id/onboarding/contract',
-  authenticate,
-  requireRole('admin'),
-  validate(schemas.workerOnboardingContract),
-  workerController.saveOnboardingContract
-);
-router.put(
   '/:id/onboarding/basic-info',
   authenticate,
   requireRole('admin'),
@@ -229,39 +222,18 @@ router.put(
   workerController.saveOnboardingBasicInfo
 );
 router.put(
-  '/:id/onboarding/emergency-contact',
+  '/:id/onboarding/working-hours',
   authenticate,
   requireRole('admin'),
-  validate(schemas.workerOnboardingEmergencyContact),
-  workerController.saveOnboardingEmergencyContact
+  validate(schemas.workerOnboardingWorkingHours),
+  workerController.saveOnboardingWorkingHours
 );
 router.put(
-  '/:id/onboarding/tax-bank',
+  '/:id/onboarding/documents-trainings',
   authenticate,
   requireRole('admin'),
-  validate(schemas.workerOnboardingTaxBank),
-  workerController.saveOnboardingTaxBank
-);
-router.put(
-  '/:id/onboarding/time-off',
-  authenticate,
-  requireRole('admin'),
-  validate(schemas.workerOnboardingTimeOff),
-  workerController.saveOnboardingTimeOff
-);
-router.put(
-  '/:id/onboarding/documents',
-  authenticate,
-  requireRole('admin'),
-  validate(schemas.workerOnboardingDocuments),
-  workerController.saveOnboardingDocuments
-);
-router.put(
-  '/:id/onboarding/training',
-  authenticate,
-  requireRole('admin'),
-  validate(schemas.workerOnboardingTraining),
-  workerController.saveOnboardingTraining
+  validate(schemas.workerOnboardingDocumentsTrainings),
+  workerController.saveOnboardingDocumentsTrainings
 );
 router.put(
   '/:id/onboarding/complete',

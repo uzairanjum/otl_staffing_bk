@@ -98,10 +98,12 @@ const schemas = {
   }),
 
   workerOnboardingBasicInfo: Joi.object({
+    contract_signature_name: Joi.string().trim().allow('').optional(),
+    employment_contract_text: Joi.string().max(100000).allow('').optional(),
     first_name: Joi.string().trim().required(),
     last_name: Joi.string().trim().required(),
     email: Joi.string().email().required(),
-    phone: Joi.string().trim().required(),
+    phone: Joi.string().trim().allow('', null),
     address: Joi.object({
       address_line1: Joi.string().allow('', null),
       address_line2: Joi.string().allow('', null),
@@ -109,42 +111,39 @@ const schemas = {
       state: Joi.string().allow('', null),
       postal_code: Joi.string().allow('', null),
       country: Joi.string().allow('', null),
-    }).required(),
+    }).default({}),
+    emergency_contact: Joi.object({
+      contact_name: Joi.string().allow('', null),
+      phone: Joi.string().allow('', null),
+      relationship: Joi.string().allow('', null),
+      address: Joi.object({
+        address_line1: Joi.string().allow('', null),
+        address_line2: Joi.string().allow('', null),
+        city: Joi.string().allow('', null),
+        state: Joi.string().allow('', null),
+        postal_code: Joi.string().allow('', null),
+        country: Joi.string().allow('', null),
+      }).optional(),
+    }).optional(),
+    tax_bank: Joi.object({
+      national_id: Joi.string().allow('', null),
+      tax_number: Joi.string().allow('', null),
+      bank_name: Joi.string().allow('', null),
+      account_name: Joi.string().allow('', null),
+      account_number: Joi.string().allow('', null),
+      routing_number: Joi.string().allow('', null),
+    }).optional(),
   }),
-  workerOnboardingContract: Joi.object({
-    name: Joi.string().trim().required(),
-    employment_contract_text: Joi.string().max(100000).allow('').optional(),
-  }),
-
-  workerOnboardingEmergencyContact: Joi.object({
-    contact_name: Joi.string().trim().required(),
-    phone: Joi.string().trim().required(),
-    relationship: Joi.string().trim().required(),
-    address: Joi.object({
-      address_line1: Joi.string().allow('', null),
-      address_line2: Joi.string().allow('', null),
-      city: Joi.string().allow('', null),
-      state: Joi.string().allow('', null),
-      postal_code: Joi.string().allow('', null),
-      country: Joi.string().allow('', null),
-    }),
-    address_line1: Joi.string().allow('', null),
-    address_line2: Joi.string().allow('', null),
-    city: Joi.string().allow('', null),
-    state: Joi.string().allow('', null),
-    postal_code: Joi.string().allow('', null),
-    country: Joi.string().allow('', null),
-  }).or('address', 'address_line1', 'address_line2', 'city', 'state', 'postal_code', 'country'),
-
-  workerOnboardingTaxBank: Joi.object({
-    national_id: Joi.string().trim().required(),
-    tax_number: Joi.string().trim().allow('', null),
-    bank_name: Joi.string().trim().required(),
-    account_name: Joi.string().trim().required(),
-    account_number: Joi.string().trim().required(),
-    routing_number: Joi.string().trim().required(),
-  }),
-  workerOnboardingTimeOff: Joi.object({
+  workerOnboardingWorkingHours: Joi.object({
+    availability: Joi.array()
+      .items(
+        Joi.object({
+          day_of_week: Joi.number().integer().min(0).max(6).required(),
+          start_time: Joi.string().trim().required(),
+          end_time: Joi.string().trim().required(),
+        })
+      )
+      .default([]),
     notes: Joi.string().allow('', null),
     entries: Joi.array()
       .items(
@@ -156,8 +155,7 @@ const schemas = {
       )
       .default([]),
   }),
-  workerOnboardingDocuments: Joi.object({}),
-  workerOnboardingTraining: Joi.object({}),
+  workerOnboardingDocumentsTrainings: Joi.object({}),
   workerOnboardingComplete: Joi.object({}),
 
   workerFileUpload: Joi.object({
