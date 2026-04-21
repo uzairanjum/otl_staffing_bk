@@ -20,6 +20,7 @@ const CompanyRole = require('../company/CompanyRole');
 const Training = require('../company/Training');
 const { v4: uuidv4 } = require('uuid');
 const { filterResponseCache } = require('../../common/utils/filter-response-cache');
+const { mongoSupportsMultiDocTransactions } = require('../../common/utils/mongo-transactions');
 const FcmToken = require('../notification/FcmToken');
 
 /** When any file exists, all slots must be present (admin onboarding v2). */
@@ -225,98 +226,125 @@ class WorkerService {
     }
 
     const tempPassword = this.generateTempPassword();
+    const useTransactions = await mongoSupportsMultiDocTransactions();
+
+    if (!useTransactions) {
+      return this._inviteWorkerExecute(
+        companyId,
+        data,
+        tempPassword,
+        inviteTrainingPayload,
+        roleAssignments,
+        null
+      );
+    }
 
     const session = await User.startSession();
     session.startTransaction();
 
     try {
-      const [user] = await User.create(
-        [
-          {
-            company_id: companyId,
-            email: data.email.toLowerCase(),
-            password_hash: tempPassword,
-            role: 'worker',
-            first_login: true,
-            first_name: data.first_name,
-            last_name: data.last_name,
-            phone: data.phone,
-            status: 'invited',
-            onboarding_step: 0,
-            onboarding_schema_version: 2,
-            contract_signed: false,
-          },
-        ],
-        { session }
+      const result = await this._inviteWorkerExecute(
+        companyId,
+        data,
+        tempPassword,
+        inviteTrainingPayload,
+        roleAssignments,
+        session
       );
-
-      const roleById = new Map();
-      for (const r of roleAssignments) {
-        const id = String(r.company_role_id);
-        roleById.set(id, r);
-      }
-      const rolesPayload = [...roleById.values()].map((r) => ({
-        company_role_id: r.company_role_id,
-        ...(r.hourly_rate_override !== undefined
-          ? { hourly_rate_override: r.hourly_rate_override }
-          : {}),
-      }));
-
-      if (rolesPayload.length > 0) {
-        await WorkerRole.create(
-          [
-            {
-              company_id: companyId,
-              worker_id: user._id,
-              roles: rolesPayload,
-            },
-          ],
-          { session }
-        );
-      }
-
-      if (inviteTrainingPayload.length > 0) {
-        await WorkerTraining.create(
-          [
-            {
-              company_id: companyId,
-              worker_id: user._id,
-              trainings: inviteTrainingPayload,
-            },
-          ],
-          { session }
-        );
-      }
-
-      if (data.send_invite !== false) {
-        const rawToken = await passwordResetTokenService.createTokenForUser(user._id, session);
-        const baseUrl = config.passwordReset.frontendUrl.replace(/\/$/, '');
-        await sendEmailWithTemplate(data.email, 'Welcome to OTL Staffing', 'invitation', {
-          name: `${data.first_name} ${data.last_name}`,
-          email: data.email,
-          setPasswordUrl: `${baseUrl}/auth/set-password?token=${rawToken}`,
-          expiryMinutes: config.passwordReset.expiryMinutes,
-        });
-      }
-
       await session.commitTransaction();
-
-      const staffProfile = {
-        id: user._id,
-        first_name: user.first_name,
-        last_name: user.last_name,
-        status: user.status,
-        onboarding_step: user.onboarding_step,
-        email: user.email,
-      };
-
-      return { user, worker: staffProfile };
+      return result;
     } catch (error) {
       await session.abortTransaction();
       throw error;
     } finally {
       session.endSession();
     }
+  }
+
+  /**
+   * @param {import('mongoose').ClientSession | null} session
+   */
+  async _inviteWorkerExecute(companyId, data, tempPassword, inviteTrainingPayload, roleAssignments, session) {
+    const opts = session ? { session } : {};
+    const [user] = await User.create(
+      [
+        {
+          company_id: companyId,
+          email: data.email.toLowerCase(),
+          password_hash: tempPassword,
+          role: 'worker',
+          first_login: true,
+          first_name: data.first_name,
+          last_name: data.last_name,
+          phone: data.phone,
+          status: 'invited',
+          onboarding_step: 0,
+          onboarding_schema_version: 2,
+          contract_signed: false,
+        },
+      ],
+      opts
+    );
+
+    const roleById = new Map();
+    for (const r of roleAssignments) {
+      const id = String(r.company_role_id);
+      roleById.set(id, r);
+    }
+    const rolesPayload = [...roleById.values()].map((r) => ({
+      company_role_id: r.company_role_id,
+      ...(r.hourly_rate_override !== undefined
+        ? { hourly_rate_override: r.hourly_rate_override }
+        : {}),
+    }));
+
+    if (rolesPayload.length > 0) {
+      await WorkerRole.create(
+        [
+          {
+            company_id: companyId,
+            worker_id: user._id,
+            roles: rolesPayload,
+          },
+        ],
+        opts
+      );
+    }
+
+    if (inviteTrainingPayload.length > 0) {
+      await WorkerTraining.create(
+        [
+          {
+            company_id: companyId,
+            worker_id: user._id,
+            trainings: inviteTrainingPayload,
+          },
+        ],
+        opts
+      );
+    }
+
+    if (data.send_invite !== false) {
+      const rawToken = await passwordResetTokenService.createTokenForUser(user._id, session);
+      const baseUrl = config.passwordReset.frontendUrl.replace(/\/$/, '');
+      await sendEmailWithTemplate(data.email, 'Welcome to OTL Staffing', 'invitation', {
+        name: `${data.first_name} ${data.last_name}`,
+        email: data.email,
+        setPasswordUrl: `${baseUrl}/auth/set-password?token=${rawToken}`,
+        expiryMinutes: config.passwordReset.expiryMinutes,
+      });
+    }
+
+    const staffProfile = {
+      id: user._id,
+      first_name: user.first_name,
+      last_name: user.last_name,
+      status: user.status,
+      onboarding_step: user.onboarding_step,
+      email: user.email,
+    };
+
+    return { user, worker: staffProfile };
   }
 
   async _enrichWorkersWithRolesAndTrainings(companyId, users) {

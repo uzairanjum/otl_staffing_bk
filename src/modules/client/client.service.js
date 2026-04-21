@@ -7,6 +7,7 @@ const { sendEmailWithTemplate } = require('../../config/email');
 const config = require('../../config');
 const passwordResetTokenService = require('../../common/services/passwordResetToken.service');
 const { v4: uuidv4 } = require('uuid');
+const { mongoSupportsMultiDocTransactions } = require('../../common/utils/mongo-transactions');
 
 class ClientService {
   _escapeRegex(input) {
@@ -183,99 +184,21 @@ class ClientService {
 
   async createClientWithDetails(companyId, data) {
     const representatives = Array.isArray(data.representatives) ? data.representatives : [];
-    const jobs = Array.isArray(data.jobs) ? data.jobs : [];
-
     if (representatives.length < 1) {
       throw new AppError('At least one client representative is required', 400);
     }
 
+    const useTransactions = await mongoSupportsMultiDocTransactions();
+    if (!useTransactions) {
+      return this._createClientWithDetailsExecute(companyId, data, null);
+    }
+
     const session = await mongoose.startSession();
     session.startTransaction();
-
     try {
-      const [client] = await Client.create([{
-        company_id: companyId,
-        name: data.client.name,
-        email: data.client.email,
-        phone: data.client.phone,
-        organization: data.client.organization,
-        address: data.client.address,
-        notes: data.client.notes,
-        website: data.client.website,
-        status: data.client.status || 'active'
-      }], { session });
-
-      const createdRepresentatives = [];
-      const invitationPayloads = [];
-
-      for (const rep of representatives) {
-        const normalizedEmail = rep.email.toLowerCase();
-        const existingUser = await User.findOne({
-          email: normalizedEmail,
-          company_id: companyId
-        }).session(session);
-
-        if (existingUser) {
-          throw new AppError(`Representative email already in use: ${normalizedEmail}`, 400);
-        }
-
-        const tempPassword = this.generateTempPassword();
-        const representativeUser = await User.create([{
-          client_id: client._id,
-          company_id: companyId,
-          name: rep.name,
-          email: normalizedEmail,
-          phone: rep.phone,
-          address: rep.address,
-          representativerole: rep.representativerole,
-          password_hash: tempPassword,
-          status: 'active',
-          role: 'client_rep',
-          first_login: true,
-          is_active: true
-        }], { session });
-
-        createdRepresentatives.push(representativeUser[0]);
-        invitationPayloads.push({
-          email: normalizedEmail,
-          name: rep.name,
-          userId: representativeUser[0]._id,
-        });
-      }
-
-      let createdJobs = [];
-      if (jobs.length > 0) {
-        createdJobs = await Job.create(
-          jobs.map(job => ({
-            company_id: companyId,
-            client_id: client._id,
-            name: job.name,
-            description: job.description,
-            location: job.location,
-            status: job.status || 'active'
-          })),
-          { session, ordered: true }
-        );
-      }
-
-      const baseUrl = config.passwordReset.frontendUrl.replace(/\/$/, '');
-      for (const invite of invitationPayloads) {
-        const rawToken = await passwordResetTokenService.createTokenForUser(invite.userId, session);
-        await sendEmailWithTemplate(invite.email, 'Welcome to OTL Staffing', 'invitation', {
-          name: invite.name,
-          email: invite.email,
-          setPasswordUrl: `${baseUrl}/auth/set-password?token=${rawToken}`,
-          expiryMinutes: config.passwordReset.expiryMinutes,
-        });
-      }
-
+      const result = await this._createClientWithDetailsExecute(companyId, data, session);
       await session.commitTransaction();
-
-      return {
-        client,
-        representatives: createdRepresentatives,
-        jobs: createdJobs
-      };
+      return result;
     } catch (error) {
       await session.abortTransaction();
       throw error;
@@ -284,170 +207,262 @@ class ClientService {
     }
   }
 
-  async updateClientWithDetails(clientId, companyId, data) {
+  async _createClientWithDetailsExecute(companyId, data, session) {
     const representatives = Array.isArray(data.representatives) ? data.representatives : [];
     const jobs = Array.isArray(data.jobs) ? data.jobs : [];
+    const opts = session ? { session } : {};
 
-    if (representatives.length < 1) {
-      throw new AppError('At least one client representative is required', 400);
+    const [client] = await Client.create([{
+      company_id: companyId,
+      name: data.client.name,
+      email: data.client.email,
+      phone: data.client.phone,
+      organization: data.client.organization,
+      address: data.client.address,
+      notes: data.client.notes,
+      website: data.client.website,
+      status: data.client.status || 'active'
+    }], opts);
+
+    const createdRepresentatives = [];
+    const invitationPayloads = [];
+
+    for (const rep of representatives) {
+      const normalizedEmail = rep.email.toLowerCase();
+      const existingUserQuery = User.findOne({ email: normalizedEmail, company_id: companyId });
+      if (session) existingUserQuery.session(session);
+      const existingUser = await existingUserQuery;
+
+      if (existingUser) {
+        throw new AppError(`Representative email already in use: ${normalizedEmail}`, 400);
+      }
+
+      const tempPassword = this.generateTempPassword();
+      const representativeUser = await User.create([{
+        client_id: client._id,
+        company_id: companyId,
+        name: rep.name,
+        email: normalizedEmail,
+        phone: rep.phone,
+        address: rep.address,
+        representativerole: rep.representativerole,
+        password_hash: tempPassword,
+        status: 'active',
+        role: 'client_rep',
+        first_login: true,
+        is_active: true
+      }], opts);
+
+      createdRepresentatives.push(representativeUser[0]);
+      invitationPayloads.push({
+        email: normalizedEmail,
+        name: rep.name,
+        userId: representativeUser[0]._id,
+      });
     }
 
-    const session = await mongoose.startSession();
-    session.startTransaction();
-
-    try {
-      const client = await Client.findOne({ _id: clientId, company_id: companyId }).session(session);
-      if (!client) {
-        throw new AppError('Client not found', 404);
-      }
-
-      client.name = data.client.name;
-      client.email = data.client.email;
-      client.phone = data.client.phone;
-      client.organization = data.client.organization;
-      client.address = data.client.address;
-      client.notes = data.client.notes;
-      client.website = data.client.website;
-      client.status = data.client.status || client.status;
-      await client.save({ session });
-
-      const existingReps = await User.find({
-        client_id: clientId,
-        company_id: companyId,
-        role: 'client_rep'
-      }).session(session);
-      const existingRepMap = new Map(existingReps.map(rep => [rep._id.toString(), rep]));
-
-      const retainedRepIds = new Set();
-      const newRepInvitations = [];
-
-      for (const rep of representatives) {
-        const normalizedEmail = rep.email.toLowerCase();
-        if (rep.id && existingRepMap.has(rep.id)) {
-          const currentRep = existingRepMap.get(rep.id);
-          const duplicateEmailUser = await User.findOne({
-            email: normalizedEmail,
-            company_id: companyId,
-            _id: { $ne: currentRep._id }
-          }).session(session);
-
-          if (duplicateEmailUser) {
-            throw new AppError(`Representative email already in use: ${normalizedEmail}`, 400);
-          }
-
-          currentRep.name = rep.name;
-          currentRep.email = normalizedEmail;
-          currentRep.phone = rep.phone;
-          currentRep.address = rep.address;
-          currentRep.representativerole = rep.representativerole;
-          currentRep.is_active = true;
-          currentRep.status = 'active';
-          await currentRep.save({ session });
-          retainedRepIds.add(currentRep._id.toString());
-          continue;
-        }
-
-        const existingUser = await User.findOne({
-          email: normalizedEmail,
-          company_id: companyId
-        }).session(session);
-        if (existingUser) {
-          throw new AppError(`Representative email already in use: ${normalizedEmail}`, 400);
-        }
-
-        const tempPassword = this.generateTempPassword();
-        const createdRep = await User.create([{
-          client_id: clientId,
+    let createdJobs = [];
+    if (jobs.length > 0) {
+      createdJobs = await Job.create(
+        jobs.map(job => ({
           company_id: companyId,
-          name: rep.name,
-          email: normalizedEmail,
-          phone: rep.phone,
-          address: rep.address,
-          representativerole: rep.representativerole,
-          password_hash: tempPassword,
-          status: 'active',
-          role: 'client_rep',
-          first_login: true,
-          is_active: true
-        }], { session });
-
-        retainedRepIds.add(createdRep[0]._id.toString());
-        newRepInvitations.push({
-          email: normalizedEmail,
-          name: rep.name,
-          userId: createdRep[0]._id,
-        });
-      }
-
-      const repsToDelete = existingReps
-        .filter(rep => !retainedRepIds.has(rep._id.toString()))
-        .map(rep => rep._id);
-      if (repsToDelete.length > 0) {
-        await User.deleteMany({
-          _id: { $in: repsToDelete },
-          company_id: companyId,
-          client_id: clientId,
-          role: 'client_rep'
-        }).session(session);
-      }
-
-      const existingJobs = await Job.find({ client_id: clientId, company_id: companyId }).session(session);
-      const existingJobMap = new Map(existingJobs.map(job => [job._id.toString(), job]));
-      const retainedJobIds = new Set();
-
-      for (const job of jobs) {
-        if (job.id && existingJobMap.has(job.id)) {
-          const currentJob = existingJobMap.get(job.id);
-          currentJob.name = job.name;
-          currentJob.description = job.description;
-          currentJob.location = job.location;
-          currentJob.status = job.status || currentJob.status;
-          await currentJob.save({ session });
-          retainedJobIds.add(currentJob._id.toString());
-          continue;
-        }
-
-        const createdJob = await Job.create([{
-          company_id: companyId,
-          client_id: clientId,
+          client_id: client._id,
           name: job.name,
           description: job.description,
           location: job.location,
           status: job.status || 'active'
-        }], { session });
-        retainedJobIds.add(createdJob[0]._id.toString());
-      }
+        })),
+        { ...opts, ordered: true }
+      );
+    }
 
-      const jobsToDelete = existingJobs
-        .filter(job => !retainedJobIds.has(job._id.toString()))
-        .map(job => job._id);
-      if (jobsToDelete.length > 0) {
-        await Job.deleteMany({
-          _id: { $in: jobsToDelete },
-          company_id: companyId,
-          client_id: clientId
-        }).session(session);
-      }
+    const baseUrl = config.passwordReset.frontendUrl.replace(/\/$/, '');
+    for (const invite of invitationPayloads) {
+      const rawToken = await passwordResetTokenService.createTokenForUser(invite.userId, session);
+      await sendEmailWithTemplate(invite.email, 'Welcome to OTL Staffing', 'invitation', {
+        name: invite.name,
+        email: invite.email,
+        setPasswordUrl: `${baseUrl}/auth/set-password?token=${rawToken}`,
+        expiryMinutes: config.passwordReset.expiryMinutes,
+      });
+    }
 
-      const inviteBaseUrl = config.passwordReset.frontendUrl.replace(/\/$/, '');
-      for (const invite of newRepInvitations) {
-        const rawToken = await passwordResetTokenService.createTokenForUser(invite.userId, session);
-        await sendEmailWithTemplate(invite.email, 'Welcome to OTL Staffing', 'invitation', {
-          name: invite.name,
-          email: invite.email,
-          setPasswordUrl: `${inviteBaseUrl}/auth/set-password?token=${rawToken}`,
-          expiryMinutes: config.passwordReset.expiryMinutes,
-        });
-      }
+    return {
+      client,
+      representatives: createdRepresentatives,
+      jobs: createdJobs
+    };
+  }
 
+  async updateClientWithDetails(clientId, companyId, data) {
+    const representatives = Array.isArray(data.representatives) ? data.representatives : [];
+    if (representatives.length < 1) {
+      throw new AppError('At least one client representative is required', 400);
+    }
+
+    const useTransactions = await mongoSupportsMultiDocTransactions();
+    if (!useTransactions) {
+      return this._updateClientWithDetailsExecute(clientId, companyId, data, null);
+    }
+
+    const session = await mongoose.startSession();
+    session.startTransaction();
+    try {
+      const result = await this._updateClientWithDetailsExecute(clientId, companyId, data, session);
       await session.commitTransaction();
-      return this.getClient(clientId, companyId);
+      return result;
     } catch (error) {
       await session.abortTransaction();
       throw error;
     } finally {
       session.endSession();
     }
+  }
+
+  async _updateClientWithDetailsExecute(clientId, companyId, data, session) {
+    const representatives = Array.isArray(data.representatives) ? data.representatives : [];
+    const jobs = Array.isArray(data.jobs) ? data.jobs : [];
+    const opts = session ? { session } : {};
+
+    const clientQuery = Client.findOne({ _id: clientId, company_id: companyId });
+    if (session) clientQuery.session(session);
+    const client = await clientQuery;
+    if (!client) {
+      throw new AppError('Client not found', 404);
+    }
+
+    client.name = data.client.name;
+    client.email = data.client.email;
+    client.phone = data.client.phone;
+    client.organization = data.client.organization;
+    client.address = data.client.address;
+    client.notes = data.client.notes;
+    client.website = data.client.website;
+    client.status = data.client.status || client.status;
+    await client.save(opts);
+
+    const existingRepsQuery = User.find({ client_id: clientId, company_id: companyId, role: 'client_rep' });
+    if (session) existingRepsQuery.session(session);
+    const existingReps = await existingRepsQuery;
+    const existingRepMap = new Map(existingReps.map(rep => [rep._id.toString(), rep]));
+
+    const retainedRepIds = new Set();
+    const newRepInvitations = [];
+
+    for (const rep of representatives) {
+      const normalizedEmail = rep.email.toLowerCase();
+      if (rep.id && existingRepMap.has(rep.id)) {
+        const currentRep = existingRepMap.get(rep.id);
+        const dupQuery = User.findOne({ email: normalizedEmail, company_id: companyId, _id: { $ne: currentRep._id } });
+        if (session) dupQuery.session(session);
+        const duplicateEmailUser = await dupQuery;
+
+        if (duplicateEmailUser) {
+          throw new AppError(`Representative email already in use: ${normalizedEmail}`, 400);
+        }
+
+        currentRep.name = rep.name;
+        currentRep.email = normalizedEmail;
+        currentRep.phone = rep.phone;
+        currentRep.address = rep.address;
+        currentRep.representativerole = rep.representativerole;
+        currentRep.is_active = true;
+        currentRep.status = 'active';
+        await currentRep.save(opts);
+        retainedRepIds.add(currentRep._id.toString());
+        continue;
+      }
+
+      const existingUserQuery = User.findOne({ email: normalizedEmail, company_id: companyId });
+      if (session) existingUserQuery.session(session);
+      const existingUser = await existingUserQuery;
+      if (existingUser) {
+        throw new AppError(`Representative email already in use: ${normalizedEmail}`, 400);
+      }
+
+      const tempPassword = this.generateTempPassword();
+      const createdRep = await User.create([{
+        client_id: clientId,
+        company_id: companyId,
+        name: rep.name,
+        email: normalizedEmail,
+        phone: rep.phone,
+        address: rep.address,
+        representativerole: rep.representativerole,
+        password_hash: tempPassword,
+        status: 'active',
+        role: 'client_rep',
+        first_login: true,
+        is_active: true
+      }], opts);
+
+      retainedRepIds.add(createdRep[0]._id.toString());
+      newRepInvitations.push({
+        email: normalizedEmail,
+        name: rep.name,
+        userId: createdRep[0]._id,
+      });
+    }
+
+    const repsToDelete = existingReps
+      .filter(rep => !retainedRepIds.has(rep._id.toString()))
+      .map(rep => rep._id);
+    if (repsToDelete.length > 0) {
+      const deleteRepsQuery = User.deleteMany({ _id: { $in: repsToDelete }, company_id: companyId, client_id: clientId, role: 'client_rep' });
+      if (session) deleteRepsQuery.session(session);
+      await deleteRepsQuery;
+    }
+
+    const existingJobsQuery = Job.find({ client_id: clientId, company_id: companyId });
+    if (session) existingJobsQuery.session(session);
+    const existingJobs = await existingJobsQuery;
+    const existingJobMap = new Map(existingJobs.map(job => [job._id.toString(), job]));
+    const retainedJobIds = new Set();
+
+    for (const job of jobs) {
+      if (job.id && existingJobMap.has(job.id)) {
+        const currentJob = existingJobMap.get(job.id);
+        currentJob.name = job.name;
+        currentJob.description = job.description;
+        currentJob.location = job.location;
+        currentJob.status = job.status || currentJob.status;
+        await currentJob.save(opts);
+        retainedJobIds.add(currentJob._id.toString());
+        continue;
+      }
+
+      const createdJob = await Job.create([{
+        company_id: companyId,
+        client_id: clientId,
+        name: job.name,
+        description: job.description,
+        location: job.location,
+        status: job.status || 'active'
+      }], opts);
+      retainedJobIds.add(createdJob[0]._id.toString());
+    }
+
+    const jobsToDelete = existingJobs
+      .filter(job => !retainedJobIds.has(job._id.toString()))
+      .map(job => job._id);
+    if (jobsToDelete.length > 0) {
+      const deleteJobsQuery = Job.deleteMany({ _id: { $in: jobsToDelete }, company_id: companyId, client_id: clientId });
+      if (session) deleteJobsQuery.session(session);
+      await deleteJobsQuery;
+    }
+
+    const inviteBaseUrl = config.passwordReset.frontendUrl.replace(/\/$/, '');
+    for (const invite of newRepInvitations) {
+      const rawToken = await passwordResetTokenService.createTokenForUser(invite.userId, session);
+      await sendEmailWithTemplate(invite.email, 'Welcome to OTL Staffing', 'invitation', {
+        name: invite.name,
+        email: invite.email,
+        setPasswordUrl: `${inviteBaseUrl}/auth/set-password?token=${rawToken}`,
+        expiryMinutes: config.passwordReset.expiryMinutes,
+      });
+    }
+
+    return this.getClient(clientId, companyId);
   }
 
   async updateClient(clientId, companyId, data) {
@@ -463,39 +478,46 @@ class ClientService {
   }
 
   async deleteClient(clientId, companyId) {
+    const useTransactions = await mongoSupportsMultiDocTransactions();
+    if (!useTransactions) {
+      return this._deleteClientExecute(clientId, companyId, null);
+    }
+
     const session = await mongoose.startSession();
     session.startTransaction();
-
     try {
-      const client = await Client.findOne({ _id: clientId, company_id: companyId }).session(session);
-      if (!client) {
-        throw new AppError('Client not found', 404);
-      }
-
-      await User.deleteMany({
-        client_id: clientId,
-        company_id: companyId,
-        role: 'client_rep'
-      }).session(session);
-
-      await Job.deleteMany({
-        client_id: clientId,
-        company_id: companyId
-      }).session(session);
-
-      await Client.deleteOne({
-        _id: clientId,
-        company_id: companyId
-      }).session(session);
-
+      const result = await this._deleteClientExecute(clientId, companyId, session);
       await session.commitTransaction();
-      return { message: 'Client and related data deleted successfully' };
+      return result;
     } catch (error) {
       await session.abortTransaction();
       throw error;
     } finally {
       session.endSession();
     }
+  }
+
+  async _deleteClientExecute(clientId, companyId, session) {
+    const clientQuery = Client.findOne({ _id: clientId, company_id: companyId });
+    if (session) clientQuery.session(session);
+    const client = await clientQuery;
+    if (!client) {
+      throw new AppError('Client not found', 404);
+    }
+
+    const deleteUsersQuery = User.deleteMany({ client_id: clientId, company_id: companyId, role: 'client_rep' });
+    if (session) deleteUsersQuery.session(session);
+    await deleteUsersQuery;
+
+    const deleteJobsQuery = Job.deleteMany({ client_id: clientId, company_id: companyId });
+    if (session) deleteJobsQuery.session(session);
+    await deleteJobsQuery;
+
+    const deleteClientQuery = Client.deleteOne({ _id: clientId, company_id: companyId });
+    if (session) deleteClientQuery.session(session);
+    await deleteClientQuery;
+
+    return { message: 'Client and related data deleted successfully' };
   }
 
   async getRepresentatives(clientId, companyId) {
