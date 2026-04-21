@@ -375,6 +375,15 @@ class WorkerController {
     }
   }
 
+  async updateMyProfile(req, res, next) {
+    try {
+      const worker = await workerService.updateWorker(req.user._id, req.company_id, req.body);
+      res.json(worker);
+    } catch (error) {
+      next(new AppError(error.message, error.statusCode || 500));
+    }
+  }
+
   async getMyWorkerFileViewUrl(req, res, next) {
     try {
       const url = await workerService.getWorkerFileViewUrl(
