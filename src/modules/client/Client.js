@@ -25,6 +25,9 @@ const clientSchema = new mongoose.Schema({
   notes: {
     type: String
   },
+  color: {
+    type: String
+  },
   website: {
     type: String
   },

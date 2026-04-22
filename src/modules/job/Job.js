@@ -18,6 +18,9 @@ const jobSchema = new mongoose.Schema({
   description: {
     type: String
   },
+  color: {
+    type: String
+  },
   location: {
     type: String
   },
