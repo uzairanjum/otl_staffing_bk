@@ -218,6 +218,7 @@ class ClientService {
       organization: data.client.organization,
       address: data.client.address,
       notes: data.client.notes,
+      color: data.client.color,
       website: data.client.website,
       status: data.client.status || 'active'
     }], opts);
@@ -268,6 +269,7 @@ class ClientService {
           name: job.name,
           description: job.description,
           location: job.location,
+          color: job.color,
           status: job.status || 'active'
         })),
         { ...opts, ordered: true }
@@ -335,6 +337,7 @@ class ClientService {
     client.organization = data.client.organization;
     client.address = data.client.address;
     client.notes = data.client.notes;
+    client.color = data.client.color;
     client.website = data.client.website;
     client.status = data.client.status || client.status;
     await client.save(opts);
@@ -423,6 +426,7 @@ class ClientService {
         currentJob.name = job.name;
         currentJob.description = job.description;
         currentJob.location = job.location;
+        currentJob.color = job.color;
         currentJob.status = job.status || currentJob.status;
         await currentJob.save(opts);
         retainedJobIds.add(currentJob._id.toString());
@@ -435,6 +439,7 @@ class ClientService {
         name: job.name,
         description: job.description,
         location: job.location,
+        color: job.color,
         status: job.status || 'active'
       }], opts);
       retainedJobIds.add(createdJob[0]._id.toString());
