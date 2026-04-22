@@ -29,6 +29,7 @@ const payrollRoutes = require('./modules/payroll/payroll.routes');
 const reviewRoutes = require('./modules/review/review.routes');
 const notificationRoutes = require('./modules/notification/notification.routes');
 const adminRoutes = require('./modules/admin/admin.routes');
+const calenderRoutes = require('./modules/calender/calender.routes');
 
 const app = express();
 
@@ -84,6 +85,7 @@ app.use('/api/payroll', payrollRoutes);
 app.use('/api/reviews', reviewRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/calendar', calenderRoutes);
 
 app.use(notFoundMiddleware);
 app.use(errorMiddleware);
