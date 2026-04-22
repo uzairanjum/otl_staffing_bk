@@ -117,6 +117,12 @@ router.use(requireRole('admin'));
  *                         nullable: true
  *                       status:
  *                         type: string
+ *                         enum: [assigned, requested, approved, rejected, unassigned, completed]
+ *                         description: Per-day assignment item status
+ *                       position_status:
+ *                         type: string
+ *                         enum: [assigned, requested, approved, rejected, unassigned, completed]
+ *                         description: Shift position assignment document status
  *                       job_color:
  *                         type: string
  *                         nullable: true
@@ -171,7 +177,12 @@ router.use(requireRole('admin'));
  *                               nullable: true
  *                             status:
  *                               type: string
- *                               enum: [assigned, requested, approved, rejected, completed]
+ *                               enum: [assigned, requested, approved, rejected, unassigned, completed]
+ *                               description: Per-day assignment item status
+ *                             position_status:
+ *                               type: string
+ *                               enum: [assigned, requested, approved, rejected, unassigned, completed]
+ *                               description: Shift position assignment document status
  *                             job_color:
  *                               type: string
  *                               nullable: true

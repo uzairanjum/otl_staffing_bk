@@ -49,8 +49,8 @@ const assignmentItemSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ['assigned', 'requested', 'approved', 'rejected', 'unassigned', 'completed'],
-    default: 'assigned',
+    enum: ['assigned', 'approved', 'unassigned',],
+    default: 'unassigned',
   }
 }, {
   timestamps: true
