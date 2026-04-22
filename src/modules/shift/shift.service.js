@@ -27,6 +27,33 @@ class ShiftService {
     return actorUserId || a.assigned_by || null;
   }
 
+  _toPersistedDate(value) {
+    if (value == null || value === '') return null;
+    const d = value instanceof Date ? new Date(value.getTime()) : new Date(value);
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+
+  _persistedAssignmentFromInput(assignmentInput, opts = {}) {
+    const a = assignmentInput || {};
+    const actorUserId = opts.actorUserId;
+    return {
+      worker_id: a.worker_id || null,
+      system_date: this._toPersistedDate(a.system_date),
+      system_start_time: this._toPersistedDate(a.system_start_time),
+      system_end_time: this._toPersistedDate(a.system_end_time),
+      worker_date: this._toPersistedDate(a.worker_date),
+      worker_start_time: this._toPersistedDate(a.worker_start_time),
+      worker_end_time: this._toPersistedDate(a.worker_end_time),
+      client_date: this._toPersistedDate(a.client_date),
+      client_start_time: this._toPersistedDate(a.client_start_time),
+      client_end_time: this._toPersistedDate(a.client_end_time),
+      assigned_by: this._assignedByForPersistedAssignment(a, actorUserId),
+      approved_by: a.approved_by || null,
+      approved_at: this._toPersistedDate(a.approved_at),
+      status: a.status || (a.worker_id ? 'assigned' : 'unassigned'),
+    };
+  }
+
   async _decorateShiftsWithPositionsAndStaff(shifts, companyId, opts = { includeStaff: true }) {
     const shiftIds = shifts.map((s) => s._id);
     if (shiftIds.length === 0) return [];
@@ -885,20 +912,9 @@ class ShiftService {
     for (let i = 0; i < shiftPositions.positions.length; i += 1) {
       const item = shiftPositions.positions[i];
       const inputAssignments = data.positions?.[i]?.assignments || [];
-      const assignments = inputAssignments.map((a) => ({
-        worker_id: a.worker_id || null,
-        system_date: a.system_date ? new Date(a.system_date) : null,
-        system_start_time: a.system_start_time || null,
-        system_end_time: a.system_end_time || null,
-        worker_start_time: a.worker_start_time || null,
-        worker_end_time: a.worker_end_time || null,
-        client_start_time: a.client_start_time || null,
-        client_end_time: a.client_end_time || null,
-        assigned_by: this._assignedByForPersistedAssignment(a, opts.actorUserId),
-        approved_by: a.approved_by || null,
-        approved_at: a.approved_at || null,
-        status: a.status || (a.worker_id ? 'assigned' : 'unassigned'),
-      }));
+      const assignments = inputAssignments.map((a) =>
+        this._persistedAssignmentFromInput(a, { actorUserId: opts.actorUserId }),
+      );
 
       const rootStatus = this._deriveAssignmentRootStatus(assignments);
       if (assignments.length > 0) {
@@ -1033,20 +1049,9 @@ class ShiftService {
       for (let i = 0; i < positionsDoc.positions.length; i += 1) {
         const item = positionsDoc.positions[i];
         const inputAssignments = data.positions?.[i]?.assignments || [];
-        const assignments = inputAssignments.map((a) => ({
-          worker_id: a.worker_id || null,
-          system_date: a.system_date ? new Date(a.system_date) : null,
-          system_start_time: a.system_start_time || null,
-          system_end_time: a.system_end_time || null,
-          worker_start_time: a.worker_start_time || null,
-          worker_end_time: a.worker_end_time || null,
-          client_start_time: a.client_start_time || null,
-          client_end_time: a.client_end_time || null,
-          assigned_by: this._assignedByForPersistedAssignment(a, opts.actorUserId),
-          approved_by: a.approved_by || null,
-          approved_at: a.approved_at || null,
-          status: a.status || (a.worker_id ? 'assigned' : 'unassigned'),
-        }));
+        const assignments = inputAssignments.map((a) =>
+          this._persistedAssignmentFromInput(a, { actorUserId: opts.actorUserId }),
+        );
         const rootStatus = this._deriveAssignmentRootStatus(assignments);
         assignmentDocs.push({
           company_id: companyId,
@@ -1140,19 +1145,11 @@ class ShiftService {
             shift_id: clonedShift._id,
             shift_position_id: clonedPositionsDoc._id,
             shift_position_item_id: newItemId,
-            assignments: (doc.assignments || []).map((a) => ({
-              worker_id: a.worker_id || null,
-              system_start_time: a.system_start_time || null,
-              system_end_time: a.system_end_time || null,
-              worker_start_time: a.worker_start_time || null,
-              worker_end_time: a.worker_end_time || null,
-              client_start_time: a.client_start_time || null,
-              client_end_time: a.client_end_time || null,
-              assigned_by: a.assigned_by || null,
-              approved_by: a.approved_by || null,
-              approved_at: a.approved_at || null,
-              status: a.status || (a.worker_id ? 'assigned' : 'unassigned'),
-            })),
+            assignments: (doc.assignments || []).map((a) => {
+              const plain = typeof a.toObject === 'function' ? a.toObject() : { ...a };
+              delete plain._id;
+              return this._persistedAssignmentFromInput(plain, { actorUserId: null });
+            }),
             status: doc.status || 'unassigned',
           };
         })

@@ -113,10 +113,10 @@ class AuthService {
     if (!user) {
       return { message: 'Reset link sent' };
     }
-
     const rawToken = await passwordResetTokenService.createTokenForUser(user._id);
     const baseUrl = config.passwordReset.frontendUrl.replace(/\/$/, '');
     const resetUrl = `${baseUrl}/auth/set-password?token=${rawToken}`;
+    console.log(resetUrl);
     const displayName =
       user.first_name && user.last_name
         ? `${user.first_name} ${user.last_name}`

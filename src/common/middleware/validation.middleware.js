@@ -216,7 +216,7 @@ const schemas = {
 
   client: Joi.object({
     name: Joi.string().required(),
-    email: Joi.string().email(),
+    email: Joi.string().allow('', null),
     phone: Joi.string(),
     organization: Joi.string().allow(''),
     address: Joi.string().allow(''),
@@ -229,7 +229,7 @@ const schemas = {
     first_name: Joi.string(),
     last_name: Joi.string(),
     name: Joi.string(),
-    email: Joi.string().email().required(),
+    email: Joi.string().allow('', null),
     phone: Joi.string().allow(''),
     address: Joi.string().allow(''),
     representativerole: Joi.string().allow('')
@@ -238,7 +238,7 @@ const schemas = {
   clientWithDetails: Joi.object({
     client: Joi.object({
       name: Joi.string().required(),
-      email: Joi.string().email().allow(''),
+      email: Joi.string().allow('', null),
       phone: Joi.string().allow(''),
       organization: Joi.string().allow(''),
       address: Joi.string().allow(''),
@@ -250,7 +250,7 @@ const schemas = {
     representatives: Joi.array().items(
       Joi.object({
         name: Joi.string().required(),
-        email: Joi.string().email().required(),
+        email: Joi.string().allow('', null),
         phone: Joi.string().allow(''),
         address: Joi.string().allow(''),
         representativerole: Joi.string().allow('')
@@ -272,7 +272,7 @@ const schemas = {
   clientWithDetailsUpdate: Joi.object({
     client: Joi.object({
       name: Joi.string().required(),
-      email: Joi.string().email().allow(''),
+      email: Joi.string().allow('', null),
       phone: Joi.string().allow(''),
       organization: Joi.string().allow(''),
       address: Joi.string().allow(''),
@@ -285,7 +285,7 @@ const schemas = {
       Joi.object({
         id: Joi.string(),
         name: Joi.string().required(),
-        email: Joi.string().email().required(),
+        email: Joi.string().allow('', null),
         phone: Joi.string().allow(''),
         address: Joi.string().allow(''),
         representativerole: Joi.string().allow('')

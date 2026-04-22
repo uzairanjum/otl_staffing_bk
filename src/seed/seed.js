@@ -1,13 +1,16 @@
 require('dotenv').config();
-const connectDB = require('./config/database');
-const Company = require('./modules/company/Company');
-const User = require('./common/models/User');
-const CompanyWorkingHours = require('./modules/company/CompanyWorkingHours');
-const RoleCategory = require('./modules/company/RoleCategory');
-const CompanyRole = require('./modules/company/CompanyRole');
-const TrainingCategory = require('./modules/company/TrainingCategory');
-const Training = require('./modules/company/Training');
-const logger = require('./config/logger');
+const connectDB = require('../config/database');
+const Company = require('../modules/company/Company');
+const User = require('../common/models/User');
+const CompanyWorkingHours = require('../modules/company/CompanyWorkingHours');
+const RoleCategory = require('../modules/company/RoleCategory');
+const CompanyRole = require('../modules/company/CompanyRole');
+const TrainingCategory = require('../modules/company/TrainingCategory');
+const Training = require('../modules/company/Training');
+const logger = require('../config/logger');
+const { seedDemoClients } = require('./clientseed');
+const { seedDemoWorkers } = require('./workerseed');
+const { seedDemoShifts } = require('./shiftseed');
 
 const seedCompany = async () => {
   try {
@@ -28,7 +31,7 @@ const seedCompany = async () => {
       logger.info('Company already exists', { companyName: company.name });
     }
 
-    const adminPassword = 'Admin123!';
+    const adminPassword = 'admin@123';
     const existingUser = await User.findOne({ email: 'admin@otlstaffing.com' });
     
     if (!existingUser) {
@@ -224,9 +227,14 @@ const seedCompany = async () => {
       }
     }
 
+    const adminUser = await User.findOne({ email: 'admin@otlstaffing.com', company_id: company._id });
+    await seedDemoClients({ company });
+    await seedDemoWorkers({ company, adminUser });
+    await seedDemoShifts({ company, adminUser });
+
     logger.info('Seed complete', {
       company: 'OTL Staffing',
-      adminEmail: 'admin@otlstaffing.com'
+      adminEmail: 'admin@otlstaffing.com',
     });
 
     process.exit(0);
