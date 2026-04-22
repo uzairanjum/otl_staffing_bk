@@ -34,18 +34,33 @@ class NotificationService {
   }
 
   async sendToUsers(notification, userIds) {
+    if (!userIds || userIds.length === 0) return;
+
+    const [userDocs, allTokens] = await Promise.all([
+      User.find({ _id: { $in: userIds } }).select('_id email first_name last_name name').lean(),
+      FcmToken.find({ user_id: { $in: userIds }, is_active: true }).lean(),
+    ]);
+
+    const userMap = new Map(userDocs.map(u => [String(u._id), u]));
+    const tokensByUser = new Map();
+    for (const t of allTokens) {
+      const key = String(t.user_id);
+      if (!tokensByUser.has(key)) tokensByUser.set(key, []);
+      tokensByUser.get(key).push(t.token);
+    }
+
+    const sendEmail = notification.channel === 'email' || notification.channel === 'both';
+    const sendPush = notification.channel === 'push' || notification.channel === 'both';
+
     for (const userId of userIds) {
+      const user = userMap.get(String(userId));
+      if (!user) continue;
+
       const recipient = await NotificationRecipient.create({
         notification_id: notification._id,
         user_id: userId,
         status: 'sent'
       });
-
-      const user = await User.findById(userId);
-      if (!user) continue;
-
-      const sendEmail = notification.channel === 'email' || notification.channel === 'both';
-      const sendPush = notification.channel === 'push' || notification.channel === 'both';
 
       if (sendEmail) {
         try {
@@ -57,7 +72,7 @@ class NotificationService {
             title: notification.title,
             message: notification.message
           });
-          
+
           recipient.status = 'delivered';
           await recipient.save();
         } catch (error) {
@@ -70,11 +85,9 @@ class NotificationService {
       }
 
       if (sendPush) {
-        const tokens = await FcmToken.find({ user_id: userId, is_active: true });
-        
-        if (tokens.length > 0) {
+        const tokenList = tokensByUser.get(String(userId)) || [];
+        if (tokenList.length > 0) {
           try {
-            const tokenList = tokens.map(t => t.token);
             if (tokenList.length === 1) {
               await sendFCM(tokenList[0], notification.title, notification.message, {
                 notification_id: notification._id.toString()

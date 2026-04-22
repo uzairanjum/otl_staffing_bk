@@ -10,9 +10,7 @@ class ReviewService {
       throw new AppError('Shift not found', 404);
     }
 
-    const shiftEndDate = new Date(shift.date);
-    const [endHour, endMin] = shift.end_time.split(':').map(Number);
-    shiftEndDate.setHours(endHour, endMin, 0, 0);
+    const shiftEndDate = shift.end_time ? new Date(shift.end_time) : new Date(shift.date);
     
     const threeDaysLater = new Date(shiftEndDate);
     threeDaysLater.setDate(threeDaysLater.getDate() + 3);
@@ -63,8 +61,9 @@ class ReviewService {
       shift_id: { $in: shiftIds }
     });
 
+    const reviewedSet = new Set(reviewedPositionIds.map(String));
     const positionsForReview = positions.filter(
-      p => !reviewedPositionIds.includes(p._id)
+      p => !reviewedSet.has(String(p._id))
     );
 
     const shiftMap = new Map(shifts.map(s => [s._id.toString(), s]));
