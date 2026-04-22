@@ -164,22 +164,20 @@ class ClientService {
   }
 
   async getClient(clientId, companyId) {
-    const client = await Client.findOne({ _id: clientId, company_id: companyId });
+    const client = await Client.findOne({ _id: clientId, company_id: companyId }).lean();
     if (!client) {
       throw new AppError('Client not found', 404);
     }
 
-    const representatives = await User.find({
-      client_id: clientId,
-      company_id: companyId,
-      role: 'client_rep'
-    })
-      .select('_id client_id company_id name email phone address representativerole status role first_login refresh_token is_active createdAt updatedAt')
-      .sort({ createdAt: -1 });
+    const [representatives, jobs] = await Promise.all([
+      User.find({ client_id: clientId, company_id: companyId, role: 'client_rep' })
+        .select('_id client_id company_id name email phone address representativerole status role first_login refresh_token is_active createdAt updatedAt')
+        .sort({ createdAt: -1 })
+        .lean(),
+      Job.find({ client_id: clientId, company_id: companyId }).sort({ createdAt: -1 }).lean(),
+    ]);
 
-    const jobs = await Job.find({ client_id: clientId, company_id: companyId }).sort({ createdAt: -1 });
-
-    return { ...client.toObject(), representatives, jobs };
+    return { ...client, representatives, jobs };
   }
 
   async createClientWithDetails(companyId, data) {
@@ -507,11 +505,9 @@ class ClientService {
 
     const deleteUsersQuery = User.deleteMany({ client_id: clientId, company_id: companyId, role: 'client_rep' });
     if (session) deleteUsersQuery.session(session);
-    await deleteUsersQuery;
-
     const deleteJobsQuery = Job.deleteMany({ client_id: clientId, company_id: companyId });
     if (session) deleteJobsQuery.session(session);
-    await deleteJobsQuery;
+    await Promise.all([deleteUsersQuery, deleteJobsQuery]);
 
     const deleteClientQuery = Client.deleteOne({ _id: clientId, company_id: companyId });
     if (session) deleteClientQuery.session(session);

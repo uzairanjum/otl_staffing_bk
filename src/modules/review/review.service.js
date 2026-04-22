@@ -5,7 +5,7 @@ const { AppError } = require('../../common/middleware/error.middleware');
 
 class ReviewService {
   async createReview(clientRepId, companyId, data) {
-    const shift = await Shift.findOne({ _id: data.shift_id, company_id: companyId });
+    const shift = await Shift.findOne({ _id: data.shift_id, company_id: companyId }).lean();
     if (!shift) {
       throw new AppError('Shift not found', 404);
     }
@@ -24,7 +24,7 @@ class ReviewService {
     const existingReview = await Review.findOne({
       shift_position_id: data.shift_position_id,
       client_id: shift.client_id
-    });
+    }).lean();
 
     if (existingReview) {
       throw new AppError('Review already submitted for this position', 400);
@@ -53,10 +53,10 @@ class ReviewService {
       company_id: companyId,
       status: 'completed',
       date: { $gte: threeDaysAgo }
-    }).populate('job_id');
+    }).populate('job_id').lean();
 
     const shiftIds = shifts.map(s => s._id);
-    const positions = await ShiftPosition.find({ shift_id: { $in: shiftIds } });
+    const positions = await ShiftPosition.find({ shift_id: { $in: shiftIds } }).lean();
     const positionIds = positions.map(p => p._id);
 
     const reviewedPositionIds = await Review.distinct('shift_position_id', {
@@ -76,7 +76,7 @@ class ReviewService {
       );
       return shiftPositions.length > 0;
     }).map(shift => ({
-      ...shift.toObject(),
+      ...shift,
       positions: positionsForReview.filter(
         p => p.shift_id.toString() === shift._id.toString()
       )
@@ -94,19 +94,21 @@ class ReviewService {
       query.shift_id = filters.shift_id;
     }
     return Review.find(query)
-      .populate('worker_id')
-      .populate('shift_id')
-      .populate('client_id')
-      .sort({ createdAt: -1 });
+      .populate('worker_id', 'first_name last_name email')
+      .populate('shift_id', 'name date location status')
+      .populate('client_id', 'name email')
+      .sort({ createdAt: -1 })
+      .lean();
   }
 
   async getReview(reviewId, companyId) {
     const review = await Review.findOne({ _id: reviewId, company_id: companyId })
-      .populate('worker_id')
-      .populate('shift_id')
-      .populate('client_id')
-      .populate('shift_position_id');
-    
+      .populate('worker_id', 'first_name last_name email')
+      .populate('shift_id', 'name date location status')
+      .populate('client_id', 'name email')
+      .populate('shift_position_id')
+      .lean();
+
     if (!review) {
       throw new AppError('Review not found', 404);
     }

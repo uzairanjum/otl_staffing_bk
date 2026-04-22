@@ -107,7 +107,7 @@ class PayrollService {
   }
 
   async getWorkerPayrollReports(workerId) {
-    return PayrollReport.find({ worker_id: workerId }).sort({ submittedAt: -1 });
+    return PayrollReport.find({ worker_id: workerId }).sort({ submitted_at: -1 }).lean();
   }
 
   async getPayrollReports(companyId, filters = {}) {
@@ -118,7 +118,7 @@ class PayrollService {
     if (filters.worker_id) {
       query.worker_id = filters.worker_id;
     }
-    return PayrollReport.find(query).populate('worker_id').sort({ submittedAt: -1 });
+    return PayrollReport.find(query).populate('worker_id', 'first_name last_name email').sort({ submitted_at: -1 }).lean();
   }
 
   async getPayrollReport(reportId, companyId) {

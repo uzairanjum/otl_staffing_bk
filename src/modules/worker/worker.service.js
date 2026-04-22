@@ -397,7 +397,7 @@ class WorkerService {
       query.status = filters.status;
     }
 
-    const users = await User.find(query).sort({ createdAt: -1 }).lean();
+    const users = await User.find(query).select('-password_hash -refresh_token').sort({ createdAt: -1 }).lean();
     return this._enrichWorkersWithRolesAndTrainings(companyId, users);
   }
 
@@ -410,6 +410,7 @@ class WorkerService {
       role: 'worker',
       approved: true,
     })
+      .select('-password_hash -refresh_token')
       .sort({ approved_at: -1, createdAt: -1 })
       .lean();
     return this._enrichWorkersWithRolesAndTrainings(companyId, users);

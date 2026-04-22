@@ -20,7 +20,9 @@ class NotificationService {
     });
 
     if (data.type === 'broadcast') {
-      const users = await User.find({ company_id: companyId, is_active: true, role: 'worker' });
+      const users = await User.find({ company_id: companyId, is_active: true, role: 'worker' })
+        .select('_id')
+        .lean();
       const userIds = users.map(u => u._id);
       
       await this.sendToUsers(notification, userIds);
@@ -96,7 +98,7 @@ class NotificationService {
 
   async getNotifications(companyId, filters = {}) {
     const query = { company_id: companyId };
-    return Notification.find(query).populate('created_by', 'email').sort({ createdAt: -1 });
+    return Notification.find(query).populate('created_by', 'email').sort({ createdAt: -1 }).lean();
   }
 
   async getMyNotifications(userId, filters = {}) {

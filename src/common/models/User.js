@@ -150,5 +150,9 @@ userSchema.methods.comparePassword = async function(candidatePassword) {
 userSchema.index({ email: 1, company_id: 1 }, { unique: true });
 /** Speeds up admin list of approved workers per company */
 userSchema.index({ company_id: 1, role: 1, approved: 1 });
+/** Speeds up client rep listings by client */
+userSchema.index({ client_id: 1, company_id: 1, role: 1 });
+/** Speeds up worker list sorted by creation date */
+userSchema.index({ company_id: 1, role: 1, createdAt: -1 });
 
 module.exports = mongoose.model('User', userSchema, 'users');

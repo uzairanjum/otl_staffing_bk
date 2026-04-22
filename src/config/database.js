@@ -5,7 +5,12 @@ const logger = require('./logger');
 const connectDB = async () => {
   try {
     logger.info('Connecting to MongoDB');
-    const conn = await mongoose.connect(config.mongodb.uri);
+    const conn = await mongoose.connect(config.mongodb.uri, {
+      maxPoolSize: 20,
+      minPoolSize: 2,
+      serverSelectionTimeoutMS: 5000,
+      socketTimeoutMS: 45000,
+    });
     return conn;
   } catch (error) {
     logger.error('MongoDB connection failed', {

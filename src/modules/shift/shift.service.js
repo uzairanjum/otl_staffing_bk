@@ -31,12 +31,12 @@ class ShiftService {
     const shiftIds = shifts.map((s) => s._id);
     if (shiftIds.length === 0) return [];
 
-    const positionDocs = await ShiftPosition.find({ company_id: companyId, shift_id: { $in: shiftIds } }).populate(
-      'positions.company_role_id',
-    );
-    const assignmentDocs = opts.includeStaff
-      ? await ShiftPositionAssignment.find({ company_id: companyId, shift_id: { $in: shiftIds } })
-      : [];
+    const [positionDocs, assignmentDocs] = await Promise.all([
+      ShiftPosition.find({ company_id: companyId, shift_id: { $in: shiftIds } }).populate('positions.company_role_id'),
+      opts.includeStaff
+        ? ShiftPositionAssignment.find({ company_id: companyId, shift_id: { $in: shiftIds } })
+        : Promise.resolve([]),
+    ]);
 
     const activeStatuses = new Set(['assigned', 'approved', 'completed']);
     const workerMap = new Map();
@@ -319,22 +319,29 @@ class ShiftService {
       match.location = filters.location.trim();
     }
 
-    // Resolve dropdown filters to indexed Shift fields so we avoid scanning all shifts in aggregation.
+    // Resolve dropdown filters to indexed Shift fields — run independent lookups in parallel.
     const jobNameStr = typeof filters.job === 'string' ? filters.job.trim() : '';
-    if (jobNameStr && !match.job_id && !jobNameStr.startsWith('All ')) {
-      const jdoc = await Job.findOne({ company_id: companyId, name: jobNameStr }).select('_id').lean();
-      if (!jdoc) {
-        return { items: [], page, limit, totalItems: 0, totalPages: 0 };
-      }
+    const roleNameStr = typeof filters.role === 'string' ? filters.role.trim() : '';
+
+    const shouldResolveJob = jobNameStr && !match.job_id && !jobNameStr.startsWith('All ');
+    const shouldResolveRole = roleNameStr && !roleNameStr.startsWith('All ');
+
+    const [jdoc, cr] = await Promise.all([
+      shouldResolveJob
+        ? Job.findOne({ company_id: companyId, name: jobNameStr }).select('_id').lean()
+        : Promise.resolve(null),
+      shouldResolveRole
+        ? CompanyRole.findOne({ company_id: companyId, name: roleNameStr }).select('_id').lean()
+        : Promise.resolve(null),
+    ]);
+
+    if (shouldResolveJob) {
+      if (!jdoc) return { items: [], page, limit, totalItems: 0, totalPages: 0 };
       match.job_id = jdoc._id;
     }
 
-    const roleNameStr = typeof filters.role === 'string' ? filters.role.trim() : '';
-    if (roleNameStr && !roleNameStr.startsWith('All ')) {
-      const cr = await CompanyRole.findOne({ company_id: companyId, name: roleNameStr }).select('_id').lean();
-      if (!cr) {
-        return { items: [], page, limit, totalItems: 0, totalPages: 0 };
-      }
+    if (shouldResolveRole) {
+      if (!cr) return { items: [], page, limit, totalItems: 0, totalPages: 0 };
       const roleShiftIds = await ShiftPosition.distinct('shift_id', {
         company_id: companyId,
         'positions.company_role_id': cr._id,
@@ -1293,7 +1300,7 @@ class ShiftService {
           status: { $in: ['assigned', 'approved', 'completed'] },
         },
       },
-    }).populate('shift_id');
+    }).populate('shift_id', 'name date location status job_id client_id start_time end_time');
     return docs;
   }
 
@@ -1723,22 +1730,17 @@ class ShiftService {
   }
 
   async _validateShiftReferences(companyId, data) {
-    const client = await Client.findOne({ _id: data.client_id, company_id: companyId, status: 'active' });
+    const [client, job, rep] = await Promise.all([
+      Client.findOne({ _id: data.client_id, company_id: companyId, status: 'active' }).select('_id').lean(),
+      Job.findOne({ _id: data.job_id, company_id: companyId, client_id: data.client_id, status: 'active' }).select('_id').lean(),
+      data.client_rep_id
+        ? User.findOne({ _id: data.client_rep_id, company_id: companyId, client_id: data.client_id, role: 'client_rep', is_active: true }).select('_id').lean()
+        : Promise.resolve(true),
+    ]);
+
     if (!client) throw new AppError('Client not found', 404);
-
-    const job = await Job.findOne({ _id: data.job_id, company_id: companyId, client_id: data.client_id, status: 'active' });
     if (!job) throw new AppError('Job not found for selected client', 404);
-
-    if (data.client_rep_id) {
-      const rep = await User.findOne({
-        _id: data.client_rep_id,
-        company_id: companyId,
-        client_id: data.client_id,
-        role: 'client_rep',
-        is_active: true,
-      });
-      if (!rep) throw new AppError('Client representative not found for selected client', 404);
-    }
+    if (data.client_rep_id && !rep) throw new AppError('Client representative not found for selected client', 404);
   }
 
   async _validateRoleIds(companyId, positions) {

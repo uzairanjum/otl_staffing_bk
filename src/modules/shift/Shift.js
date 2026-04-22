@@ -64,5 +64,9 @@ shiftSchema.index({ company_id: 1, job_id: 1, date: -1 });
 shiftSchema.index({ company_id: 1, location: 1 });
 /** Client rep calendar: filter by designated rep + client + date range */
 shiftSchema.index({ company_id: 1, client_id: 1, client_rep_id: 1, date: 1 });
+/** Worker open shifts query: filter by status then sort by date */
+shiftSchema.index({ company_id: 1, status: 1, date: -1 });
+/** Sort-by-created list queries */
+shiftSchema.index({ company_id: 1, createdAt: -1 });
 
 module.exports = mongoose.model('Shift', shiftSchema, 'shifts');

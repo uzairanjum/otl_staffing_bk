@@ -52,5 +52,6 @@ const workerTrainingDocumentBundleSchema = new mongoose.Schema(
 );
 
 workerTrainingDocumentBundleSchema.index({ worker_id: 1, worker_training_id: 1 }, { unique: true });
+workerTrainingDocumentBundleSchema.index({ worker_id: 1, company_id: 1 });
 
 module.exports = mongoose.model('WorkerTrainingDocument', workerTrainingDocumentBundleSchema, 'worker_trainingdocuments');

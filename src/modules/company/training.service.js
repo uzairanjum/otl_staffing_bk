@@ -16,7 +16,7 @@ class TrainingService {
 
     // Backwards-safe: keep the original array response unless paging/search is requested.
     if (!isPagedRequest) {
-      return Training.find({ company_id: companyId }).sort({ updatedAt: -1 });
+      return Training.find({ company_id: companyId }).sort({ updatedAt: -1 }).lean();
     }
 
     const page = Number.isFinite(Number(filters.page)) && Number(filters.page) > 0 ? Number(filters.page) : 1;
@@ -38,7 +38,7 @@ class TrainingService {
     if (searchRegex) query.name = searchRegex;
 
     const [items, totalItems] = await Promise.all([
-      Training.find(query).sort({ updatedAt: -1 }).skip(skip).limit(limit),
+      Training.find(query).sort({ updatedAt: -1 }).skip(skip).limit(limit).lean(),
       Training.countDocuments(query),
     ]);
     const totalPages = totalItems > 0 ? Math.ceil(totalItems / limit) : 0;
@@ -47,7 +47,7 @@ class TrainingService {
   }
 
   async getInactiveTrainings(companyId) {
-    return Training.find({ company_id: companyId, is_active: false }).sort({ updatedAt: -1 });
+    return Training.find({ company_id: companyId, is_active: false }).sort({ updatedAt: -1 }).lean();
   }
 
   async createTraining(companyId, data) {

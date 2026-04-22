@@ -38,5 +38,6 @@ const trainingSchema = new mongoose.Schema({
 });
 
 trainingSchema.index({ company_id: 1 });
+trainingSchema.index({ company_id: 1, is_active: 1 });
 
 module.exports = mongoose.model('Training', trainingSchema, 'trainings');
