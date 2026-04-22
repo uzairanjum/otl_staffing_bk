@@ -10,7 +10,7 @@ class ReviewService {
       throw new AppError('Shift not found', 404);
     }
 
-    const shiftEndDate = shift.end_time ? new Date(shift.end_time) : new Date(shift.date);
+    const shiftEndDate = new Date(shift.end_time);
     
     const threeDaysLater = new Date(shiftEndDate);
     threeDaysLater.setDate(threeDaysLater.getDate() + 3);

@@ -32,12 +32,6 @@ const reviewSchema = new mongoose.Schema({
     max: 5,
     required: true
   },
-  actual_start_time: {
-    type: Date
-  },
-  actual_end_time: {
-    type: Date
-  },
   comment: {
     type: String
   },

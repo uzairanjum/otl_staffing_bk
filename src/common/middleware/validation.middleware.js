@@ -244,7 +244,8 @@ const schemas = {
       address: Joi.string().allow(''),
       notes: Joi.string().allow(''),
       website: Joi.string().allow(''),
-      status: Joi.string().valid('active', 'inactive').default('active')
+      status: Joi.string().valid('active', 'inactive').default('active'),
+      color: Joi.string().allow('')
     }).required(),
     representatives: Joi.array().items(
       Joi.object({
@@ -260,6 +261,7 @@ const schemas = {
         name: Joi.string().required(),
         description: Joi.string().allow(''),
         location: Joi.string().allow(''),
+        color: Joi.string().allow(''),
         status: Joi.string()
           .valid('draft', 'active', 'inactive', 'completed', 'cancelled')
           .default('draft')
@@ -275,6 +277,7 @@ const schemas = {
       organization: Joi.string().allow(''),
       address: Joi.string().allow(''),
       notes: Joi.string().allow(''),
+      color: Joi.string().allow(''),
       website: Joi.string().allow(''),
       status: Joi.string().valid('active', 'inactive').default('active')
     }).required(),
@@ -294,6 +297,7 @@ const schemas = {
         name: Joi.string().required(),
         description: Joi.string().allow(''),
         location: Joi.string().allow(''),
+        color: Joi.string().allow(''),
         status: Joi.string()
           .valid('draft', 'active', 'inactive', 'completed', 'cancelled')
           .default('draft')
@@ -316,7 +320,9 @@ const schemas = {
     job_id: Joi.string().required(),
     name: Joi.string().trim().required(),
     client_rep_id: Joi.string().allow('', null),
-    date: Joi.date().required(),
+    start_time: Joi.date().required(),
+    end_time: Joi.date().required(),
+    isMultiDay: Joi.boolean().default(false),
     location: Joi.string().allow('', null),
     status: Joi.string().valid('draft', 'published', 'in_progress', 'completed', 'cancelled').default('draft'),
     notes: Joi.string().allow('', null),
@@ -330,10 +336,13 @@ const schemas = {
         assignments: Joi.array().items(
           Joi.object({
             worker_id: Joi.string().allow('', null),
-            system_start_time: Joi.date().allow(null),
-            system_end_time: Joi.date().allow(null),
+            system_date: Joi.date().required(),
+            system_start_time: Joi.date().required(),
+            system_end_time: Joi.date().required(),
+            worker_date: Joi.date().allow(null),
             worker_start_time: Joi.date().allow(null),
             worker_end_time: Joi.date().allow(null),
+            client_date: Joi.date().allow(null),
             client_start_time: Joi.date().allow(null),
             client_end_time: Joi.date().allow(null),
             status: Joi.string().valid('assigned', 'requested', 'approved', 'rejected', 'unassigned', 'completed').default('assigned')
@@ -347,7 +356,9 @@ const schemas = {
     job_id: Joi.string(),
     name: Joi.string().trim(),
     client_rep_id: Joi.string().allow('', null),
-    date: Joi.date(),
+    start_time: Joi.date(),
+    end_time: Joi.date(),
+    isMultiDay: Joi.boolean(),
     location: Joi.string().allow('', null),
     status: Joi.string().valid('draft', 'published', 'in_progress', 'completed', 'cancelled'),
     notes: Joi.string().allow('', null),
@@ -361,10 +372,13 @@ const schemas = {
         assignments: Joi.array().items(
           Joi.object({
             worker_id: Joi.string().allow('', null),
-            system_start_time: Joi.date().allow(null),
-            system_end_time: Joi.date().allow(null),
+            system_date: Joi.date().required(),
+            system_start_time: Joi.date().required(),
+            system_end_time: Joi.date().required(),
+            worker_date: Joi.date().allow(null),
             worker_start_time: Joi.date().allow(null),
             worker_end_time: Joi.date().allow(null),
+            client_date: Joi.date().allow(null),
             client_start_time: Joi.date().allow(null),
             client_end_time: Joi.date().allow(null),
             status: Joi.string().valid('assigned', 'requested', 'approved', 'rejected', 'unassigned', 'completed').default('assigned')

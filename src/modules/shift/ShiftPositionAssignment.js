@@ -6,16 +6,28 @@ const assignmentItemSchema = new mongoose.Schema({
     ref: 'User',
     default: null,
   },
+  system_date: {
+    type: Date,
+    required: true,
+  },
   system_start_time: {
     type: Date,
+    required: true,
   },
   system_end_time: {
+    type: Date,
+    required: true,
+  },
+  worker_date: {
     type: Date,
   },
   worker_start_time: {
     type: Date,
   },
   worker_end_time: {
+    type: Date,
+  },
+  client_date: {
     type: Date,
   },
   client_start_time: {
@@ -83,5 +95,6 @@ shiftPositionAssignmentSchema.index(
 );
 shiftPositionAssignmentSchema.index({ company_id: 1, shift_id: 1 });
 shiftPositionAssignmentSchema.index({ company_id: 1, 'assignments.worker_id': 1, 'assignments.status': 1 });
+shiftPositionAssignmentSchema.index({ company_id: 1, 'assignments.system_date': 1 });
 
 module.exports = mongoose.model('ShiftPositionAssignment', shiftPositionAssignmentSchema, 'shift_positionassignments');

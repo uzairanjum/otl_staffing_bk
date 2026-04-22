@@ -24,19 +24,17 @@ const shiftSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User'
   },
-  date: {
-    type: Date,
-    required: true
-  },
-  // Derived for fast listing: boundaries of any assignments (system_start_time/system_end_time).
-  // Stored to avoid scanning assignments when listing shifts.
   start_time: {
     type: Date,
-    default: null,
+    required: true,
   },
   end_time: {
     type: Date,
-    default: null,
+    required: true,
+  },
+  isMultiDay: {
+    type: Boolean,
+    default: false
   },
   location: {
     type: String
@@ -58,14 +56,15 @@ const shiftSchema = new mongoose.Schema({
   timestamps: true
 });
 
-shiftSchema.index({ company_id: 1, date: -1, status: 1 });
-shiftSchema.index({ company_id: 1, client_id: 1, date: -1 });
-shiftSchema.index({ company_id: 1, job_id: 1, date: -1 });
+shiftSchema.index({ company_id: 1, start_time: -1, status: 1 });
+shiftSchema.index({ company_id: 1, client_id: 1, start_time: -1 });
+shiftSchema.index({ company_id: 1, job_id: 1, start_time: -1 });
 shiftSchema.index({ company_id: 1, location: 1 });
 /** Client rep calendar: filter by designated rep + client + date range */
-shiftSchema.index({ company_id: 1, client_id: 1, client_rep_id: 1, date: 1 });
-/** Worker open shifts query: filter by status then sort by date */
-shiftSchema.index({ company_id: 1, status: 1, date: -1 });
+shiftSchema.index({ company_id: 1, client_id: 1, client_rep_id: 1, start_time: 1 });
+/** Worker shifts: overlap queries on start_time/end_time range */
+shiftSchema.index({ company_id: 1, status: 1, start_time: -1 });
+shiftSchema.index({ company_id: 1, end_time: 1 });
 /** Sort-by-created list queries */
 shiftSchema.index({ company_id: 1, createdAt: -1 });
 

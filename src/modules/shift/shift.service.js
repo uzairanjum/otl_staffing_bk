@@ -135,10 +135,10 @@ class ShiftService {
   }
 
   _parseSort(filters) {
-    const by = typeof filters.sort_by === 'string' ? filters.sort_by : 'date';
+    const by = typeof filters.sort_by === 'string' ? filters.sort_by : 'start_time';
     const dirRaw = typeof filters.sort_dir === 'string' ? filters.sort_dir : 'desc';
     const dir = dirRaw.toLowerCase() === 'asc' ? 1 : -1;
-    const field = by === 'createdAt' || by === 'updatedAt' || by === 'date' ? by : 'date';
+    const field = by === 'createdAt' || by === 'updatedAt' || by === 'start_time' ? by : 'start_time';
     return { field, dir };
   }
 
@@ -293,14 +293,14 @@ class ShiftService {
       if (filters.status) query.status = filters.status;
       if (filters.job_id) query.job_id = filters.job_id;
       if (filters.client_id) query.client_id = filters.client_id;
-      if (filters.date_from) query.date = { $gte: new Date(filters.date_from) };
-      if (filters.date_to) query.date = { ...query.date, $lte: new Date(filters.date_to) };
+      if (filters.date_from) query.end_time = { $gte: new Date(filters.date_from) };
+      if (filters.date_to) query.start_time = { ...(query.start_time || {}), $lte: new Date(filters.date_to) };
 
       const shifts = await Shift.find(query)
         .populate('job_id')
         .populate('client_id')
         .populate('client_rep_id')
-        .sort({ date: -1 });
+        .sort({ start_time: -1 });
 
       return this._decorateShiftsWithPositionsAndStaff(shifts, companyId, { includeStaff: true });
     }
@@ -313,8 +313,8 @@ class ShiftService {
     if (filters.status) match.status = filters.status;
     if (filters.job_id) match.job_id = filters.job_id;
     if (filters.client_id) match.client_id = filters.client_id;
-    if (filters.date_from) match.date = { $gte: new Date(filters.date_from) };
-    if (filters.date_to) match.date = { ...(match.date || {}), $lte: new Date(filters.date_to) };
+    if (filters.date_from) match.end_time = { $gte: new Date(filters.date_from) };
+    if (filters.date_to) match.start_time = { ...(match.start_time || {}), $lte: new Date(filters.date_to) };
     if (typeof filters.location === 'string' && filters.location.trim()) {
       match.location = filters.location.trim();
     }
@@ -546,8 +546,8 @@ class ShiftService {
     if (filters.job_id) match.job_id = filters.job_id;
     if (filters.client_id) match.client_id = filters.client_id;
     if (filters.location) match.location = filters.location;
-    if (filters.date_from) match.date = { $gte: new Date(filters.date_from) };
-    if (filters.date_to) match.date = { ...(match.date || {}), $lte: new Date(filters.date_to) };
+    if (filters.date_from) match.end_time = { $gte: new Date(filters.date_from) };
+    if (filters.date_to) match.start_time = { ...(match.start_time || {}), $lte: new Date(filters.date_to) };
 
     const roleName = typeof filters.role_name === 'string' ? filters.role_name.trim() : '';
     const roleId = typeof filters.role_id === 'string' ? filters.role_id.trim() : '';
@@ -810,21 +810,56 @@ class ShiftService {
     return { items: decorated, page, limit, totalItems, totalPages };
   }
 
+  _validateAssignmentDates(positions, shiftStartTime, shiftEndTime) {
+    const start = new Date(shiftStartTime);
+    const end = new Date(shiftEndTime);
+    for (const p of positions || []) {
+      for (const a of p.assignments || []) {
+        if (!a.system_date) {
+          throw new AppError('Each assignment must have a system_date', 400);
+        }
+        const d = new Date(a.system_date);
+        if (Number.isNaN(d.getTime())) {
+          throw new AppError('Invalid system_date on assignment', 400);
+        }
+        if (d < start || d > end) {
+          throw new AppError(
+            `Assignment system_date ${a.system_date} is outside the shift range (${shiftStartTime} – ${shiftEndTime})`,
+            400,
+          );
+        }
+      }
+    }
+  }
+
   async createShift(companyId, data, opts = {}) {
     await this._dropLegacyAssignmentIndexIfExists();
     await this._validateShiftReferences(companyId, data);
     await this._validateRoleIds(companyId, data.positions || []);
 
-    const { start_time, end_time } = this._assignmentBoundariesFromInput(data.positions);
+    if (!data.start_time || !data.end_time) {
+      throw new AppError('start_time and end_time are required', 400);
+    }
+    const startTime = new Date(data.start_time);
+    const endTime = new Date(data.end_time);
+    if (Number.isNaN(startTime.getTime()) || Number.isNaN(endTime.getTime())) {
+      throw new AppError('Invalid start_time or end_time', 400);
+    }
+    if (startTime >= endTime) {
+      throw new AppError('start_time must be before end_time', 400);
+    }
+
+    this._validateAssignmentDates(data.positions, startTime, endTime);
+
     const shift = await Shift.create({
       company_id: companyId,
       client_id: data.client_id,
       job_id: data.job_id,
       name: data.name,
       client_rep_id: data.client_rep_id || null,
-      date: data.date,
-      start_time,
-      end_time,
+      start_time: startTime,
+      end_time: endTime,
+      isMultiDay: data.isMultiDay ?? false,
       location: data.location || '',
       status: data.status || 'draft',
       notes: data.notes || '',
@@ -852,6 +887,7 @@ class ShiftService {
       const inputAssignments = data.positions?.[i]?.assignments || [];
       const assignments = inputAssignments.map((a) => ({
         worker_id: a.worker_id || null,
+        system_date: a.system_date ? new Date(a.system_date) : null,
         system_start_time: a.system_start_time || null,
         system_end_time: a.system_end_time || null,
         worker_start_time: a.worker_start_time || null,
@@ -946,11 +982,27 @@ class ShiftService {
 
     const updatePayload = { ...data };
     delete updatePayload.positions;
-    if (Array.isArray(data.positions)) {
-      const { start_time, end_time } = this._assignmentBoundariesFromInput(data.positions);
-      updatePayload.start_time = start_time;
-      updatePayload.end_time = end_time;
+
+    if (data.start_time != null || data.end_time != null) {
+      const nextStart = data.start_time != null ? new Date(data.start_time) : existingShift.start_time;
+      const nextEnd = data.end_time != null ? new Date(data.end_time) : existingShift.end_time;
+      if (Number.isNaN(nextStart.getTime()) || Number.isNaN(nextEnd.getTime())) {
+        throw new AppError('Invalid start_time or end_time', 400);
+      }
+      if (nextStart >= nextEnd) {
+        throw new AppError('start_time must be before end_time', 400);
+      }
+      updatePayload.start_time = nextStart;
+      updatePayload.end_time = nextEnd;
     }
+
+    const effectiveStart = updatePayload.start_time || existingShift.start_time;
+    const effectiveEnd = updatePayload.end_time || existingShift.end_time;
+
+    if (Array.isArray(data.positions)) {
+      this._validateAssignmentDates(data.positions, effectiveStart, effectiveEnd);
+    }
+
     const shift = await Shift.findOneAndUpdate({ _id: shiftId, company_id: companyId }, updatePayload, {
       new: true,
       runValidators: true,
@@ -983,6 +1035,7 @@ class ShiftService {
         const inputAssignments = data.positions?.[i]?.assignments || [];
         const assignments = inputAssignments.map((a) => ({
           worker_id: a.worker_id || null,
+          system_date: a.system_date ? new Date(a.system_date) : null,
           system_start_time: a.system_start_time || null,
           system_end_time: a.system_end_time || null,
           worker_start_time: a.worker_start_time || null,
@@ -1048,7 +1101,9 @@ class ShiftService {
       job_id: sourceShift.job_id,
       name: sourceShift.name,
       client_rep_id: sourceShift.client_rep_id || null,
-      date: sourceShift.date,
+      start_time: sourceShift.start_time,
+      end_time: sourceShift.end_time,
+      isMultiDay: sourceShift.isMultiDay ?? false,
       location: sourceShift.location || '',
       status: sourceShift.status || 'draft',
       notes: sourceShift.notes || '',
@@ -1300,14 +1355,14 @@ class ShiftService {
           status: { $in: ['assigned', 'approved', 'completed'] },
         },
       },
-    }).populate('shift_id', 'name date location status job_id client_id start_time end_time');
+    }).populate('shift_id', 'name start_time end_time location status job_id client_id');
     return docs;
   }
 
   async getWorkerUpcomingShifts(workerId, companyId) {
     const now = new Date();
     const docs = await this.getWorkerAssignedShifts(workerId, companyId);
-    return docs.filter((doc) => doc.shift_id && new Date(doc.shift_id.date) >= now);
+    return docs.filter((doc) => doc.shift_id && new Date(doc.shift_id.end_time) >= now);
   }
 
   async getWorkerShiftsCalendar(workerId, companyId, query = {}) {
@@ -1364,7 +1419,8 @@ class ShiftService {
         {
           $match: {
             'shift.company_id': companyId,
-            'shift.date': { $gte: from, $lte: to },
+            'shift.start_time': { $lte: to },
+            'shift.end_time': { $gte: from },
             'shift.status': { $ne: 'draft' },
           },
         },
@@ -1409,7 +1465,8 @@ class ShiftService {
           $match: {
             'shift.company_id': companyId,
             'shift.status': 'published',
-            'shift.date': { $gte: from, $lte: to },
+            'shift.start_time': { $lte: to },
+            'shift.end_time': { $gte: from },
           },
         },
         { $group: { _id: '$shift_id' } },
@@ -1434,11 +1491,16 @@ class ShiftService {
 
     if (ids.length === 0) return [];
 
-    const shifts = await Shift.find({ _id: { $in: ids }, company_id: companyId, date: { $gte: from, $lte: to } })
+    const shifts = await Shift.find({
+      _id: { $in: ids },
+      company_id: companyId,
+      start_time: { $lte: to },
+      end_time: { $gte: from },
+    })
       .populate('job_id')
       .populate('client_id')
       .populate('client_rep_id')
-      .sort({ date: -1 });
+      .sort({ start_time: -1 });
 
     return this._decorateShiftsWithPositionsAndStaff(shifts, companyId, { includeStaff: true });
   }
@@ -1536,7 +1598,8 @@ class ShiftService {
     const match = {
       company_id: companyOid,
       client_rep_id: repClause,
-      date: { $gte: from, $lte: to },
+      start_time: { $lte: to },
+      end_time: { $gte: from },
       status: { $ne: 'cancelled' },
     };
 
@@ -1544,7 +1607,7 @@ class ShiftService {
       .populate({ path: 'job_id', select: 'name' })
       .populate({ path: 'client_id', select: 'name' })
       .populate({ path: 'client_rep_id', select: 'first_name last_name name email' })
-      .sort({ date: 1 })
+      .sort({ start_time: 1 })
       .lean();
 
     if (!shifts.length) {
@@ -1682,8 +1745,8 @@ class ShiftService {
     const timeOffConflict = await TimeOffRequest.findOne({
       worker_id: workerId,
       status: 'active',
-      start_date: { $lte: context.shift.date },
-      end_date: { $gte: context.shift.date },
+      start_date: { $lte: context.shift.end_time },
+      end_date: { $gte: context.shift.start_time },
     });
     if (timeOffConflict) throw new AppError('Worker has time off during this shift', 400);
 
