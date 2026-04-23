@@ -26,78 +26,104 @@ class PayrollService {
       status: 'submitted'
     });
 
+    if (!data.entries || data.entries.length === 0) {
+      return report;
+    }
+
+    const assignmentIds = data.entries
+      .filter(e => e.shift_assignment_id)
+      .map(e => e.shift_assignment_id);
+
+    const [assignments, workerRole] = await Promise.all([
+      ShiftPositionAssignment.find({
+        _id: { $in: assignmentIds },
+        worker_id: workerId,
+        status: 'completed'
+      }).populate('shift_position_id', 'company_role_id').lean(),
+      WorkerRole.findOne({ worker_id: workerId, company_id: companyId }).lean()
+    ]);
+
+    const assignmentMap = new Map(assignments.map(a => [String(a._id), a]));
+    const roleRates = new Map();
+    if (workerRole?.roles) {
+      workerRole.roles.forEach(r => {
+        roleRates.set(String(r.company_role_id), r.hourly_rate_override);
+      });
+    }
+
+    const uniqueRoleIds = new Set();
+    assignments.forEach(a => {
+      if (a.shift_position_id?.company_role_id) {
+        uniqueRoleIds.add(String(a.shift_position_id.company_role_id));
+      }
+    });
+    if (workerRole?.roles?.length) {
+      workerRole.roles.forEach(r => {
+        uniqueRoleIds.add(String(r.company_role_id));
+      });
+    }
+
+    const companyRoles = await CompanyRole.find({
+      _id: { $in: Array.from(uniqueRoleIds) }
+    }).lean();
+    const roleMap = new Map(companyRoles.map(r => [String(r._id), r]));
+
     let totalHours = 0;
     let totalAmount = 0;
 
-    if (data.entries && data.entries.length > 0) {
-      for (const entry of data.entries) {
-        let hoursWorked = entry.hours_worked || 0;
-        let hourlyRate = entry.hourly_rate || 0;
+    const entries = data.entries.map(entry => {
+      let hoursWorked = entry.hours_worked || 0;
+      let hourlyRate = entry.hourly_rate || 0;
 
-        if (entry.shift_assignment_id) {
-          const assignment = await ShiftPositionAssignment.findOne({
-            _id: entry.shift_assignment_id,
-            worker_id: workerId,
-            status: 'completed'
-          }).populate({
-            path: 'shift_position_id',
-            select: 'company_role_id',
-            populate: { path: 'company_role_id', select: 'default_hourly_rate' },
-          });
+      if (entry.shift_assignment_id) {
+        const assignment = assignmentMap.get(String(entry.shift_assignment_id));
+        if (assignment?.worker_end_time && assignment?.worker_start_time) {
+          hoursWorked = (assignment.worker_end_time - assignment.worker_start_time) / (1000 * 60 * 60);
+        }
 
-          if (assignment && assignment.worker_end_time && assignment.worker_start_time) {
-            hoursWorked = (assignment.worker_end_time - assignment.worker_start_time) / (1000 * 60 * 60);
-          }
+        const positionRoleId = assignment?.shift_position_id?.company_role_id;
+        const rateOverride = roleRates.get(String(positionRoleId));
 
-          const positionRoleId =
-            assignment?.shift_position_id?.company_role_id?._id ||
-            assignment?.shift_position_id?.company_role_id;
-          const wrDoc = await WorkerRole.findOne({ worker_id: workerId, company_id: companyId });
-          let roleEntry = null;
-          if (wrDoc && positionRoleId) {
-            roleEntry = wrDoc.roles.find(
-              (r) => String(r.company_role_id) === String(positionRoleId)
-            );
-          }
-          if (roleEntry?.hourly_rate_override != null) {
-            hourlyRate = roleEntry.hourly_rate_override;
-          } else if (positionRoleId) {
-            const role = await CompanyRole.findById(positionRoleId);
+        if (rateOverride != null) {
+          hourlyRate = rateOverride;
+        } else if (positionRoleId) {
+          const role = roleMap.get(String(positionRoleId));
+          hourlyRate = role?.default_hourly_rate || 0;
+        } else if (workerRole?.roles?.length) {
+          const first = workerRole.roles[0];
+          const override = roleRates.get(String(first.company_role_id));
+          if (override != null) {
+            hourlyRate = override;
+          } else {
+            const role = roleMap.get(String(first.company_role_id));
             hourlyRate = role?.default_hourly_rate || 0;
-          } else if (wrDoc?.roles?.length) {
-            const first = wrDoc.roles[0];
-            if (first.hourly_rate_override != null) {
-              hourlyRate = first.hourly_rate_override;
-            } else {
-              const role = await CompanyRole.findById(first.company_role_id);
-              hourlyRate = role?.default_hourly_rate || 0;
-            }
           }
         }
-
-        if (entry.external_work_desc) {
-          hourlyRate = entry.external_hourly_rate || 0;
-        }
-
-        const totalAmount = hoursWorked * hourlyRate;
-
-        await PayrollReportEntry.create({
-          payroll_report_id: report._id,
-          shift_assignment_id: entry.shift_assignment_id,
-          external_work_desc: entry.external_work_desc,
-          external_start_time: entry.external_start_time,
-          external_end_time: entry.external_end_time,
-          external_hourly_rate: entry.external_hourly_rate,
-          hours_worked: hoursWorked,
-          hourly_rate: hourlyRate,
-          total_amount: totalAmount,
-          status: 'submitted'
-        });
-
-        totalHours += hoursWorked;
-        totalAmount += totalAmount;
       }
-    }
+
+      if (entry.external_work_desc) {
+        hourlyRate = entry.external_hourly_rate || 0;
+      }
+
+      const entryAmount = hoursWorked * hourlyRate;
+      totalHours += hoursWorked;
+      totalAmount += entryAmount;
+
+      return {
+        payroll_report_id: report._id,
+        shift_assignment_id: entry.shift_assignment_id,
+        external_work_desc: entry.external_work_desc,
+        external_start_time: entry.external_start_time,
+        external_end_time: entry.external_end_time,
+        external_hourly_rate: entry.external_hourly_rate,
+        hours_worked: hoursWorked,
+        hourly_rate: hourlyRate,
+        total_amount: entryAmount,
+        status: 'submitted'
+      };
+    });
+
+    await PayrollReportEntry.insertMany(entries);
 
     report.total_hours = totalHours;
     report.total_amount = totalAmount;

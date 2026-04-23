@@ -7,9 +7,10 @@ const connectDB = async () => {
     logger.info('Connecting to MongoDB');
     const conn = await mongoose.connect(config.mongodb.uri, {
       maxPoolSize: 20,
-      minPoolSize: 2,
+      minPoolSize: 5,
       serverSelectionTimeoutMS: 5000,
       socketTimeoutMS: 45000,
+      waitQueueTimeoutMS: 10000,
     });
     return conn;
   } catch (error) {

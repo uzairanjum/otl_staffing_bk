@@ -148,6 +148,8 @@ class CalenderService {
           duration_hours: 1,
           assignment: {
             shift_id: '$shift_id',
+            shift_position_id: '$shift_position_id',
+            shift_position_assignment_id: '$_id',
             start_time: { $dateToString: { format: '%H:%M', date: '$assignments.system_start_time' } },
             end_time: { $dateToString: { format: '%H:%M', date: '$assignments.system_end_time' } },
             system_date: '$assignments.system_date',
@@ -231,6 +233,8 @@ class CalenderService {
         $project: {
           _id: 0,
           shift_id: '$shift_id',
+          shift_position_id: '$shift_position_id',
+          shift_position_assignment_id: '$_id',
           start_time: { $dateToString: { format: '%H:%M', date: '$assignments.system_start_time' } },
           end_time: { $dateToString: { format: '%H:%M', date: '$assignments.system_end_time' } },
           system_date: '$assignments.system_date',

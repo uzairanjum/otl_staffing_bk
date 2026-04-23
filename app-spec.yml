@@ -1,0 +1,75 @@
+name: otl-staffing
+services:
+- name: api
+  image:
+    registry: registry.digitalocean.com
+    registry_type: DOCR
+    repository: otl-staffing/otl-staffing-api
+    tag: latest
+  source_dir: .
+  http_port: 3000
+  health_check:
+    http_path: /health
+  envs:
+  - key: NODE_ENV
+    value: production
+  - key: MONGODB_URI
+    value: ${MONGODB_URI}
+  - key: JWT_SECRET
+    value: ${JWT_SECRET}
+  - key: JWT_REFRESH_SECRET
+    value: ${JWT_REFRESH_SECRET}
+  - key: CLOUDINARY_CLOUD_NAME
+    value: ${CLOUDINARY_CLOUD_NAME}
+  - key: CLOUDINARY_API_KEY
+    value: ${CLOUDINARY_API_KEY}
+  - key: CLOUDINARY_API_SECRET
+    value: ${CLOUDINARY_API_SECRET}
+  - key: FIREBASE_PROJECT_ID
+    value: ${FIREBASE_PROJECT_ID}
+  - key: FIREBASE_PRIVATE_KEY
+    value: ${FIREBASE_PRIVATE_KEY}
+  - key: FIREBASE_CLIENT_EMAIL
+    value: ${FIREBASE_CLIENT_EMAIL}
+  - key: SMTP_HOST
+    value: ${SMTP_HOST}
+  - key: SMTP_PORT
+    value: ${SMTP_PORT}
+  - key: SMTP_USER
+    value: ${SMTP_USER}
+  - key: SMTP_PASS
+    value: ${SMTP_PASS}
+  - key: PAPERTRAIL_HOST
+    value: ${PAPERTRAIL_HOST}
+  - key: PAPERTRAIL_PORT
+    value: ${PAPERTRAIL_PORT}
+  - key: FRONTEND_URL
+    value: ${FRONTEND_URL}
+  log_destinations:
+  - name: papertrail
+    papertrail:
+      endpoint: ${PAPERTRAIL_HOST}:${PAPERTRAIL_PORT}
+  routes:
+  - path: /
+    preserve_path_prefix: true
+  http_port: 3000
+  instance_count: 2
+  instance_size_slug: basic-xs
+
+static_sites: []
+jobs: []
+
+databases:
+- engine: MONGODB
+  name: otl-mongodb
+  version: "6"
+  production: true
+
+envs:
+- key: MONGODB_URI
+  scope: RUN_AND_BUILD_TIME
+  value: mongodb+srv://${db_username}:${db_password}@${db_host}/${db_name}?authSource=admin
+
+regions:
+- name: sfo
+  label: San Francisco

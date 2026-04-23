@@ -16,7 +16,6 @@ const authenticate = async (req, res, next) => {
     
     const user = await User.findById(decoded.user_id)
       .select('_id company_id role first_login is_active client_rep_id')
-      .populate('client_rep_id')
       .lean();
 
     if (!user || !user.is_active) {

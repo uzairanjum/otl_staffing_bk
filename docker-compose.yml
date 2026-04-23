@@ -1,0 +1,79 @@
+version: '3.8'
+
+# Single docker-compose.yml for both local development and DigitalOcean production
+# Local: docker-compose up
+# Production: ENVIRONMENT=production docker-compose up -d
+
+services:
+  mongodb:
+    image: mongo:6.0
+    container_name: otl_staffing_mongodb
+    environment:
+      MONGO_INITDB_DATABASE: otl_staffing
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USER:-mongoadmin}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:-change_this_password}
+      MONGO_APP_USER: ${MONGO_APP_USER:-otl_user}
+      MONGO_APP_PASSWORD: ${MONGO_APP_PASSWORD:-otl_password}
+    volumes:
+      - ${MONGODB_DATA_PATH:-mongo_data}:/data/db
+      - ${MONGODB_CONFIG_PATH:-mongo_config}:/data/configdb
+      - ./scripts/mongo-init.js:/docker-entrypoint-initdb.d/init.js:ro
+    ports:
+      - "27017:27017"
+    networks:
+      - otl_staffing_network
+    healthcheck:
+      test: echo 'db.runCommand("ping").ok' | mongosh localhost:27017/test --quiet
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
+  app:
+    build:
+      context: .
+      # Use 'production' target for DigitalOcean, 'development' for local
+      target: ${BUILD_TARGET:-development}
+    container_name: otl_staffing_app
+    environment:
+      NODE_ENV: ${NODE_ENV:-development}
+      MONGODB_URI: mongodb://${MONGO_APP_USER:-otl_user}:${MONGO_APP_PASSWORD:-otl_password}@mongodb:27017/otl_staffing?authSource=otl_staffing
+      PORT: ${PORT:-3000}
+      JWT_SECRET: ${JWT_SECRET:-your-secret-key-change-in-production}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-your-refresh-secret-key-change-in-production}
+      CLOUDINARY_CLOUD_NAME: ${CLOUDINARY_CLOUD_NAME}
+      CLOUDINARY_API_KEY: ${CLOUDINARY_API_KEY}
+      CLOUDINARY_API_SECRET: ${CLOUDINARY_API_SECRET}
+      FIREBASE_PROJECT_ID: ${FIREBASE_PROJECT_ID}
+      FIREBASE_PRIVATE_KEY: ${FIREBASE_PRIVATE_KEY}
+      FIREBASE_CLIENT_EMAIL: ${FIREBASE_CLIENT_EMAIL}
+      SMTP_HOST: ${SMTP_HOST}
+      SMTP_PORT: ${SMTP_PORT}
+      SMTP_USER: ${SMTP_USER}
+      SMTP_PASS: ${SMTP_PASS}
+      PAPERTRAIL_HOST: ${PAPERTRAIL_HOST}
+      PAPERTRAIL_PORT: ${PAPERTRAIL_PORT}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3001}
+    ports:
+      - "${PORT:-3000}:3000"
+    # Volumes only mounted in development
+    volumes:
+      - ${APP_VOLUME_PATH:-.}:/app
+      - /app/node_modules
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    networks:
+      - otl_staffing_network
+    # Command differs by environment
+    command: ${COMMAND:-npm run dev}
+    restart: ${RESTART_POLICY:-no}
+
+volumes:
+  mongo_data:
+  mongo_config:
+
+networks:
+  otl_staffing_network:
+    driver: bridge
