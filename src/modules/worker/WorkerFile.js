@@ -30,6 +30,10 @@ const workerFileItemSchema = new mongoose.Schema(
     cloudinary_public_id: {
       type: String,
     },
+    original_file_name: {
+      type: String,
+      trim: true,
+    },
     uploaded_at: {
       type: Date,
       default: Date.now,

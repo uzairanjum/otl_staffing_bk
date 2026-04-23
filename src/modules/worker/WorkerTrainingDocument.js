@@ -14,6 +14,10 @@ const trainingFileEntrySchema = new mongoose.Schema(
     cloudinary_public_id: {
       type: String,
     },
+    original_file_name: {
+      type: String,
+      trim: true,
+    },
     document_type: {
       type: String,
     },

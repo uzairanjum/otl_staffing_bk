@@ -22,6 +22,23 @@ class WorkerTrainingController {
       next(new AppError(error.message, error.statusCode || 500));
     }
   }
+
+  async updateMyTrainingStatus(req, res, next) {
+    try {
+      const workerId = req.user._id;
+      const { id: trainingId } = req.params;
+      const { status } = req.body;
+      const workerTraining = await trainingService.updateWorkerTrainingStatus(
+        trainingId,
+        workerId,
+        req.company_id,
+        status
+      );
+      res.json(workerTraining);
+    } catch (error) {
+      next(new AppError(error.message, error.statusCode || 500));
+    }
+  }
 }
 
 module.exports = new WorkerTrainingController();
