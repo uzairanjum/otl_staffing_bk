@@ -362,7 +362,7 @@ class WorkerService {
         .lean(),
       WorkerTraining.find({ worker_id: { $in: ids }, company_id: companyId })
         .populate([
-          { path: 'trainings.training_id', select: 'name' },
+          { path: 'trainings.training_id', select: 'name document_required' },
           { path: 'trainings.role_ids', select: 'name' },
         ])
         .lean(),
@@ -592,7 +592,7 @@ class WorkerService {
         .lean(),
       WorkerTraining.findOne({ worker_id: workerUserId, company_id: companyId })
         .populate([
-          { path: 'trainings.training_id', select: 'name' },
+          { path: 'trainings.training_id', select: 'name document_required' },
           { path: 'trainings.role_ids', select: 'name' },
         ])
         .lean(),
@@ -829,7 +829,7 @@ class WorkerService {
     return this._onboardingPutResponse(user);
   }
 
-  /** Standard Mon–Fri hours + time-off notes / entries (JWT: admin). */
+  /** Standard Mon–Fri hours + time-off entries (JWT: admin). */
   async saveOnboardingWorkingHours(workerUserId, companyId, data) {
     const user = await User.findOne({
       _id: workerUserId,
@@ -883,19 +883,27 @@ class WorkerService {
         throw new AppError(`Invalid time off date at row ${index + 1}`, 400);
       }
 
+      const leaveType = String(entry.leave_type || 'full').trim().toLowerCase();
+      if (leaveType !== 'full' && leaveType !== 'partial') {
+        throw new AppError(`Invalid leave type at row ${index + 1}`, 400);
+      }
+
       const from = String(entry.from || '').trim();
       const to = String(entry.to || '').trim();
-      if (!from || !to) {
-        throw new AppError(`Time off from/to is required at row ${index + 1}`, 400);
-      }
-      if (from >= to) {
-        throw new AppError(`Time off end time must be after start time at row ${index + 1}`, 400);
+      if (leaveType === 'partial') {
+        if (!from || !to) {
+          throw new AppError(`Time off from/to is required at row ${index + 1}`, 400);
+        }
+        if (from >= to) {
+          throw new AppError(`Time off end time must be after start time at row ${index + 1}`, 400);
+        }
       }
 
       return {
+        leave_type: leaveType,
         date,
-        from,
-        to,
+        from: leaveType === 'partial' ? from : '',
+        to: leaveType === 'partial' ? to : '',
       };
     });
 
@@ -903,7 +911,6 @@ class WorkerService {
       { worker_id: user._id },
       {
         worker_id: user._id,
-        notes: data.notes != null ? String(data.notes).trim() : '',
         entries: normalizedEntries,
       },
       { upsert: true, new: true, runValidators: true }
@@ -966,8 +973,30 @@ class WorkerService {
       wtDocBundles.map((b) => [String(b.worker_training_id), b])
     );
     const trainings = wt?.trainings || [];
+    const trainingIds = Array.from(
+      new Set(
+        trainings
+          .map((t) => String(t?.training_id || ''))
+          .filter((id) => mongoose.Types.ObjectId.isValid(id))
+      )
+    );
+    const trainingRows = trainingIds.length
+      ? await Training.find({ _id: { $in: trainingIds }, company_id: companyId })
+          .select('_id document_required')
+          .lean()
+      : [];
+    const trainingDocRequiredById = new Map(
+      trainingRows.map((row) => [String(row._id), row.document_required === true])
+    );
     for (const t of trainings) {
       if (t.status === 'completed') {
+        const trainingId = String(t?.training_id || '');
+        const requiresDocument = trainingDocRequiredById.has(trainingId)
+          ? trainingDocRequiredById.get(trainingId) === true
+          : true;
+        if (!requiresDocument) {
+          continue;
+        }
         const b = docByTrainingEntry.get(String(t._id));
         const hasTrainingDoc = b?.documents?.some((d) => d.file_url);
         if (!hasTrainingDoc) {
@@ -1245,6 +1274,8 @@ class WorkerService {
     const file_url = String(fileData.file_url).trim();
     const cloudinaryPublicId =
       fileData.cloudinary_public_id != null ? String(fileData.cloudinary_public_id).trim() : '';
+    const originalFileName =
+      fileData.original_file_name != null ? String(fileData.original_file_name).trim() : '';
     const file_type = fileData.file_type;
     const uploaded_at = new Date();
 
@@ -1252,6 +1283,7 @@ class WorkerService {
       'files.$[elem].file_url': file_url,
       'files.$[elem].uploaded_at': uploaded_at,
       'files.$[elem].cloudinary_public_id': cloudinaryPublicId || null,
+      'files.$[elem].original_file_name': originalFileName || null,
     };
 
     const updatedExisting = await WorkerFile.updateOne(
@@ -1269,6 +1301,7 @@ class WorkerService {
               file_type,
               file_url,
               cloudinary_public_id: cloudinaryPublicId || undefined,
+              original_file_name: originalFileName || undefined,
               uploaded_at,
             },
           },

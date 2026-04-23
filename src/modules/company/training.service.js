@@ -184,6 +184,7 @@ class TrainingService {
       training_id: trainingOid,
       file_url: documentData.file_url,
       cloudinary_public_id: documentData.cloudinary_public_id,
+      original_file_name: documentData.original_file_name,
       document_type: documentData.document_type,
       uploaded_at: documentData.uploaded_at ? new Date(documentData.uploaded_at) : new Date(),
     };

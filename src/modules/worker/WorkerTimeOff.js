@@ -2,19 +2,26 @@ const mongoose = require('mongoose');
 
 const workerTimeOffEntrySchema = new mongoose.Schema(
   {
+    leave_type: {
+      type: String,
+      enum: ['full', 'partial'],
+      default: 'full',
+      required: true,
+      trim: true,
+    },
     date: {
       type: Date,
       required: true,
     },
     from: {
       type: String,
-      required: true,
       trim: true,
+      default: '',
     },
     to: {
       type: String,
-      required: true,
       trim: true,
+      default: '',
     },
   },
   {

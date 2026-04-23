@@ -263,6 +263,7 @@ class WorkerController {
           worker_training_id,
           file_url: url,
           cloudinary_public_id: publicId,
+          original_file_name: req.file.originalname,
           document_type: document_type || undefined,
         }
       );
@@ -305,6 +306,7 @@ class WorkerController {
           worker_training_id,
           file_url: url,
           cloudinary_public_id: publicId,
+          original_file_name: req.file.originalname,
           document_type: document_type || undefined,
         }
       );
@@ -343,6 +345,7 @@ class WorkerController {
         file_type,
         file_url: url,
         cloudinary_public_id: publicId,
+        original_file_name: req.file.originalname,
       });
       res.status(201).json(saved);
     } catch (error) {
@@ -379,6 +382,7 @@ class WorkerController {
         file_type,
         file_url: url,
         cloudinary_public_id: publicId,
+        original_file_name: req.file.originalname,
       });
       res.status(201).json(saved);
     } catch (error) {

@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const trainingController = require('./training.controller');
 const { authenticate, requireRole } = require('../../common/middleware/auth.middleware');
+const { validate, schemas } = require('../../common/middleware/validation.middleware');
 
 /**
  * @swagger
@@ -59,5 +60,6 @@ router.get('/', trainingController.getMyTrainings);
  *         $ref: '#/components/responses/Unauthorized'
  */
 router.post('/:id/documents', trainingController.uploadMyTrainingDocument);
+router.put('/:id/status', validate(schemas.workerTrainingStatusUpdate), trainingController.updateMyTrainingStatus);
 
 module.exports = router;

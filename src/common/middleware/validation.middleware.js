@@ -157,9 +157,18 @@ const schemas = {
     entries: Joi.array()
       .items(
         Joi.object({
+          leave_type: Joi.string().valid('full', 'partial').default('full'),
           date: Joi.alternatives().try(Joi.date(), Joi.string().isoDate()).required(),
-          from: Joi.string().trim().pattern(/^([01]\d|2[0-3]):([0-5]\d)$/).required(),
-          to: Joi.string().trim().pattern(/^([01]\d|2[0-3]):([0-5]\d)$/).required(),
+          from: Joi.when('leave_type', {
+            is: 'partial',
+            then: Joi.string().trim().pattern(/^([01]\d|2[0-3]):([0-5]\d)$/).required(),
+            otherwise: Joi.string().trim().allow('', null).optional(),
+          }),
+          to: Joi.when('leave_type', {
+            is: 'partial',
+            then: Joi.string().trim().pattern(/^([01]\d|2[0-3]):([0-5]\d)$/).required(),
+            otherwise: Joi.string().trim().allow('', null).optional(),
+          }),
         })
       )
       .default([]),
@@ -488,7 +497,11 @@ const schemas = {
     state: Joi.string(),
     postal_code: Joi.string(),
     country: Joi.string()
-  })
+  }),
+
+  workerTrainingStatusUpdate: Joi.object({
+    status: Joi.string().valid('assigned', 'in_progress', 'completed').required(),
+  }),
 };
 
 module.exports = {
